@@ -43,7 +43,7 @@ func main() {
 }
 
 func getStats(w http.ResponseWriter, r *http.Request) {
-	app := "./test.sh"
+	app := "/etc/LibGuestAPI/shellScripts/getStats.sh"
 
 	cmd := exec.Command(app)
 	stdout, err := cmd.Output()
@@ -58,8 +58,7 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func getDomains(w http.ResponseWriter, r *http.Request) {
-	app := "./getDomains.sh"
-
+	app := "/etc/LibGuestAPI/shellScripts/getDomains.sh"
 	cmd := exec.Command(app)
 	stdout, err := cmd.Output()
 
@@ -73,7 +72,7 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 }
 
 func getRamUsage(w http.ResponseWriter, r *http.Request) {
-	app := "./getRamUsage.sh"
+	app := "/etc/LibGuestAPI/shellScripts/getRamUsage.sh"
 
 	cmd := exec.Command(app)
 	stdout, err := cmd.Output()

@@ -1,3 +1,3 @@
 #!/bin/bash
 #Copyright GammaByte.xyz 2021
-curl -fsSL http://localhost:8081/api/kvm/stats | jq '.host.ram_Total' | sed 's"///g'
+kvmtop -p json -r 1 --mem --host --disk --io --net --cpu --pressure --verbose | jq '.host.ram_Free' | sed 's/"//g'
