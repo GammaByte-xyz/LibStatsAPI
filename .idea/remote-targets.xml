@@ -4,11 +4,12 @@
     <targets>
       <target name="root@alpha1-host2:22" type="ssh/sftp">
         <config>
-          <option name="projectRootOnTarget" value="/root/LibStatsAPI" />
+          <option name="projectRootOnTarget" value="$USER_HOME$/LibStatsAPI/" />
           <option name="serverName" value="root@alpha1-host2:22 agent" />
         </config>
         <ContributedStateBase type="GoLanguageRuntime">
           <config>
+            <option name="goPath" value="/usr/bin/go" />
             <option name="goRoot" value="/usr/bin/go" />
             <option name="goVersion" value="go1.14.12 linux/amd64" />
           </config>

@@ -2,7 +2,7 @@
 <project version="4">
   <component name="SshConfigs">
     <configs>
-      <sshConfig authType="OPEN_SSH" host="alpha1-host2" id="163d825c-ff94-4e04-8c38-2938052c8b15" port="22" nameFormat="DESCRIPTIVE" username="root" />
+      <sshConfig authType="OPEN_SSH" connectionConfig="{&quot;hostKeyVerifier&quot;:{&quot;hashKnownHosts&quot;:true,&quot;stringHostKeyChecking&quot;:&quot;NO&quot;}}" host="alpha1-host2" id="163d825c-ff94-4e04-8c38-2938052c8b15" port="22" nameFormat="DESCRIPTIVE" username="root" />
     </configs>
   </component>
 </project>
