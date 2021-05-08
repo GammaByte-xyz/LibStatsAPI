@@ -43,9 +43,9 @@ func main() {
 }
 
 func getStats(w http.ResponseWriter, r *http.Request) {
-	app := "/etc/LibGuestAPI/shellScripts/getStats.sh"
+	args := []string{"getStats.sh", "-a"}
 
-	cmd := exec.Command(app)
+	cmd := exec.Command("bash", args...)
 	stdout, err := cmd.Output()
 
 	if err != nil {
@@ -53,13 +53,15 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println(cmd)
 	fmt.Println(string(stdout))
 	fmt.Fprintf(w, string(stdout))
 }
 
 func getDomains(w http.ResponseWriter, r *http.Request) {
-	app := "/etc/LibGuestAPI/shellScripts/getDomains.sh"
-	cmd := exec.Command(app)
+	args := []string{"getStats.sh", "-d"}
+
+	cmd := exec.Command("bash", args...)
 	stdout, err := cmd.Output()
 
 	if err != nil {
@@ -67,14 +69,15 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println(cmd)
 	fmt.Println(string(stdout))
 	fmt.Fprintf(w, string(stdout))
 }
 
 func getRamUsage(w http.ResponseWriter, r *http.Request) {
-	app := "/etc/LibGuestAPI/shellScripts/getRamUsage.sh"
+	args := []string{"getStats.sh", "-r"}
 
-	cmd := exec.Command(app)
+	cmd := exec.Command("bash", args...)
 	stdout, err := cmd.Output()
 
 	if err != nil {
@@ -82,6 +85,7 @@ func getRamUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	fmt.Println(cmd)
 	fmt.Println(string(stdout))
 	fmt.Fprintf(w, string(stdout))
 }
