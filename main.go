@@ -6,7 +6,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"github.com/libvirt/libvirt-go"
-	"github.com/quadrifoglio/go-qemu"
 	"libvirt.org/libvirt-go-xml"
 	"log"
 	"math/rand"
@@ -15,13 +14,13 @@ import (
 	"time"
 )
 
-type Article struct {
+/*type Article struct {
 	Title   string `json:"Title"`
 	Desc    string `json:"desc"`
 	Content string `json:"content"`
 }
 
-type Articles []Article
+type Articles []Article*/
 
 func homePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "API Endpoint Hit\n")
@@ -83,6 +82,7 @@ type createDomainStruct struct {
 	CpuSize         int    `json:"CpuSize,string,omitempty"`
 	DiskSize        int    `json:"DiskSize,string,omitempty"`
 	OperatingSystem string `json:"OperatingSystem"`
+	Network         string `json:"Network"`
 
 	// User Information
 	UserEmail string `json:"UserEmail"`
@@ -145,37 +145,35 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	domainName := fmt.Sprintf("VPS-%d", domainID)
 
-	domainImagePath := fmt.Sprintf("/mnt/vmblocknew/%s.qcow2", domainName)
+	qcow2Name := fmt.Sprintf("%s%s", "/mnt/vmblocknew/", domainName)
+	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
 
-	img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize)*GiB)
-	imgJson, err := json.Marshal(img)
-
-	fmt.Fprintf(w, "%s\n", string(imgJson))
-
-	if err != nil {
-		fmt.Fprintf(w, "%s\n", string(imgJson))
-	}
-
-	err = img.Create()
+	qcow2Args := []string{"create", "-f", "qcow2", "-o", "preallocation=metadata", qcow2Name, qcow2Size}
+	cmd := exec.Command("qemu-img", qcow2Args...)
+	stdout, err := cmd.Output()
 	if err != nil {
 		fmt.Println(err.Error())
+		fmt.Println(qcow2Args)
+		fmt.Println(cmd)
+		fmt.Println(string(stdout))
+		fmt.Fprintf(w, string(stdout))
 		fmt.Fprintf(w, "  [2/6] Error, VPS disk failed to provision. The error is printed below.\n")
 		errcode := fmt.Sprintf("  %s\n", err)
 		fmt.Fprintf(w, errcode)
 		return
 	}
-
 	if err == nil {
 		fmt.Fprintf(w, "  [2/6] VPS disk successfully created!\n")
 	}
 
-	chmodArgs := []string{"777", domainImagePath}
-	cmd := exec.Command("chmod", chmodArgs...)
-	stdout, err := cmd.Output()
-
+	chmodArgs := []string{"777", "/mnt/vmblocknew/", qcow2Name}
+	cmd = exec.Command("chmod", chmodArgs...)
+	stdout, err = cmd.Output()
 	if err != nil {
-		fmt.Fprintf(w, "Error: Could not change image permissions.\nSTDOUT:  %s\n", string(stdout))
-		fmt.Fprintf(w, "Error Message: %s\n", err)
+		fmt.Println(err.Error())
+		fmt.Println(cmd)
+		fmt.Fprintf(w, "  [2.5/6] Error, changing permissions of VPS disk failed. The error is printed below.\n")
+		fmt.Fprintf(w, "%s", cmd)
 	}
 
 	var ramConfMemory *libvirtxml.DomainMemory = &libvirtxml.DomainMemory{
@@ -322,7 +320,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 				},
 				Source: &libvirtxml.DomainDiskSource{
 					File: &libvirtxml.DomainDiskSourceFile{
-						File:     fmt.Sprint("/mnt/vmblocknew/", domainName, ".qcow2"),
+						File:     fmt.Sprint("/mnt/vmblocknew/", domainName),
 						SecLabel: nil,
 					},
 				},
@@ -342,7 +340,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 				},
 				Source: &libvirtxml.DomainInterfaceSource{
 					Network: &libvirtxml.DomainInterfaceSourceNetwork{
-						Network: "default",
+						Network: t.Network,
 					},
 				},
 			},
@@ -390,12 +388,6 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	xmldoc, err := domcfg.Marshal()
 
-	if err != nil {
-		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.\n")
-		fmt.Fprintf(w, "Err --> %s\n", err)
-		return
-	}
-
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		log.Fatalf("Failed! \nReason: %s\n", err)
@@ -404,7 +396,13 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	if err == nil {
-		fmt.Fprintf(w, "  [3/6] Successfully connected to QEMU-KVM!\n")
+		fmt.Fprintf(w, "  [2/6] Successfully connected to QEMU-KVM!\n")
+	}
+
+	if err != nil {
+		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.\n")
+		fmt.Fprintf(w, "Err --> %s\n", err)
+		return
 	}
 
 	dom, err := conn.DomainDefineXML(xmldoc)
@@ -416,7 +414,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil {
-		fmt.Fprintf(w, "  [4/6] Successfully defined new VPS!\n")
+		fmt.Fprintf(w, "  [5/6] Successfully defined new VPS!\n")
 	}
 
 	fmt.Println(dom)
@@ -427,12 +425,12 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err.Error())
 		fmt.Println(cmd)
-		fmt.Fprintf(w, "  [5/6] Error, autostart configuration setup of VPS failed. The error is printed below.\n")
+		fmt.Fprintf(w, "  [6/6] Error, autostart configuration setup of VPS failed. The error is printed below.\n")
 		fmt.Fprintf(w, "%s", cmd)
 		return
 	}
 	if err == nil {
-		fmt.Fprintf(w, "  [5/6] Successfully enabled autostart on VPS.\n")
+		fmt.Fprintf(w, "  [6/6] Successfully enabled autostart on VPS.\n")
 	}
 
 	startDomainArgs := []string{"start", domainName}
@@ -442,7 +440,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err.Error())
 		fmt.Println(cmd)
 		fmt.Fprintf(w, "  [6/6] Error, starting VPS failed. The error is printed below.\n")
-		fmt.Fprintf(w, "%s", cmd)
+		fmt.Fprintf(w, "%s\n", cmd)
 		return
 	}
 
@@ -516,16 +514,16 @@ func testPath(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "  VM Creation Date: %s\n", t.CreationDate)
 	fmt.Fprintf(w, "  ------------------------------------------\n")
 	*/
-	rand.Seed(time.Now().UnixNano())
+	/*rand.Seed(time.Now().UnixNano())
 	randID := random(1, 2000000)
 	fmt.Printf("Random Domain ID: %d\n", randID)
-	domainID := randID
+	domainID := randID*/
 
-	domainName := fmt.Sprintf("VPS-%d", domainID)
+	//domainName := fmt.Sprintf("VPS-%d", domainID)
 
-	domainImagePath := fmt.Sprintf("/mnt/vmblocknew/%s.qcow2", domainName)
+	//domainImagePath := fmt.Sprintf("/mnt/vmblocknew/%s.qcow2", domainName)
 
-	img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize))
+	/*img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize))
 	imgJson, err := json.Marshal(img)
 
 	if err == nil {
@@ -539,7 +537,7 @@ func testPath(w http.ResponseWriter, r *http.Request) {
 	err = img.Create()
 	if err != nil {
 		log.Fatal(err)
-	}
+	}*/
 
 	/*qemuImg := qemu.Image{
 		ActualSize:            uint64(t.DiskSize),

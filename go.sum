@@ -8,8 +8,6 @@ github.com/fatih/camelcase v1.0.0/go.mod h1:yN2Sb0lFhZJUdVvtELVWefmrXpuZESvPmqwo
 github.com/libvirt/libvirt-go v7.3.0+incompatible h1:wi6dqZhQjNKIRCxQ7G2jwoAuK9dUQsfYoU/D8XMvLVU=
 github.com/libvirt/libvirt-go v7.3.0+incompatible/go.mod h1:34zsnB4iGeOv7Byj6qotuW8Ya4v4Tr43ttjz/F0wjLE=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/quadrifoglio/go-qemu v0.0.0-20200619083131-ee4f04687ec3 h1:WYYoHbRhgq/SNmnlAlGQCk0vd6MYQ7IDtRhFIJ8QDE4=
-github.com/quadrifoglio/go-qemu v0.0.0-20200619083131-ee4f04687ec3/go.mod h1:P9Eay2JynPJbHPsIDtPnQ9O+pmAZXqX/CYZ/SFpWTcs=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.6.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
