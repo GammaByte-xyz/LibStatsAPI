@@ -133,7 +133,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil {
-		fmt.Fprintf(w, "  [1/4] Request recieved! Provisioning VM...\n")
+		fmt.Fprintf(w, "\n  [1/6] Request recieved! Provisioning VM...\n")
 	}
 
 	fmt.Printf("RAM => %dGB\n", t.RamSize)
@@ -146,6 +146,17 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("User Role => %s\n", t.UserRole)
 	fmt.Printf("\n")
 	fmt.Printf("VM Creation Date: %s\n", t.CreationDate)
+
+	fmt.Fprintf(w, "RAM => %dGB\n", t.RamSize)
+	fmt.Fprintf(w, "vCPUs => %d\n", t.CpuSize)
+	fmt.Fprintf(w, "Disk Size => %dGB\n", t.DiskSize)
+	fmt.Fprintf(w, "Operating System => %s\n", t.OperatingSystem)
+	fmt.Fprintf(w, "User Email => %s\n", t.UserEmail)
+	fmt.Fprintf(w, "User ID => %d\n", t.UserID)
+	fmt.Fprintf(w, "Full Name => %s\n", t.FullName)
+	fmt.Fprintf(w, "User Role => %s\n", t.UserRole)
+	fmt.Fprintf(w, "\n")
+	fmt.Fprintf(w, "VM Creation Date: %s\n", t.CreationDate)
 
 	rand.Seed(time.Now().UnixNano())
 	randID := random(1, 2000000)
@@ -176,13 +187,23 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(cmd)
 		fmt.Println(string(stdout))
 		fmt.Fprintf(w, string(stdout))
-		fmt.Fprintf(w, "  [2/4] Error, VPS disk failed to provision. The error is printed below.\n")
+		fmt.Fprintf(w, "  [2/6] Error, VPS disk failed to provision. The error is printed below.\n")
 		errcode := fmt.Sprintf("  %s\n", err)
 		fmt.Fprintf(w, errcode)
 		return
 	}
 	if err == nil {
-		fmt.Fprintf(w, "  [2/4] VPS disk successfully created!\n")
+		fmt.Fprintf(w, "  [2/6] VPS disk successfully created!\n")
+	}
+
+	chmodArgs := []string{"777", "/mnt/vmblocknew/", qcow2Name}
+	cmd = exec.Command("chmod", chmodArgs...)
+	stdout, err = cmd.Output()
+	if err != nil {
+		fmt.Println(err.Error())
+		fmt.Println(cmd)
+		fmt.Fprintf(w, "  [2.5/6] Error, changing permissions of VPS disk failed. The error is printed below.\n")
+		fmt.Fprintf(w, "%s", cmd)
 	}
 
 	var ramConfMemory *libvirtxml.DomainMemory = &libvirtxml.DomainMemory{
@@ -329,7 +350,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 				},
 				Source: &libvirtxml.DomainDiskSource{
 					File: &libvirtxml.DomainDiskSourceFile{
-						File:     fmt.Sprint(domainName, ".qcow2"),
+						File:     fmt.Sprint("/mnt/vmblocknew/", domainName, ".qcow2"),
 						SecLabel: nil,
 					},
 				},
@@ -406,24 +427,66 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	xmldoc, err := domcfg.Marshal()
 
 	if err != nil {
-		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.")
+		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.\n")
 		fmt.Fprintf(w, "Err --> %s\n", err)
 		return
 	}
 
-	fmt.Fprintf(w, "%s\n", xmldoc)
-	libvirt.NewConnect("qemu:///system")
-	conn := libvirt.Connect{}
+	//fmt.Fprintf(w, "%s\n", xmldoc)
+	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
+	if err != nil {
+		log.Fatalf("Failed! \nReason: %s\n", err)
+		log.Fatalf("Failed to connect to qemu.n\n")
+	}
+
+	if err == nil {
+		fmt.Fprintf(w, "  [3/6] Successfully connected to QEMU-KVM!\n")
+	}
+
 	dom, err := conn.DomainDefineXML(xmldoc)
 
 	if err != nil {
-		fmt.Fprintf(w, "Failed to define new domain from XML. Exiting.")
+		fmt.Fprintf(w, "Failed to define new domain from XML. Exiting.\n")
 		fmt.Fprintf(w, "Err --> %s\n", err)
 		return
 	}
 
-	fmt.Sprintf("%s", dom)
-	fmt.Fprintf(w, "%s", dom)
+	if err == nil {
+		fmt.Fprintf(w, "  [4/6] Successfully defined new VPS!\n")
+	}
+
+	fmt.Println(dom)
+
+	autostartDomainArgs := []string{"autostart", domainName}
+	cmd = exec.Command("virsh", autostartDomainArgs...)
+	stdout, err = cmd.Output()
+	if err != nil {
+		fmt.Println(err.Error())
+		fmt.Println(cmd)
+		fmt.Fprintf(w, "  [5/6] Error, autostart configuration setup of VPS failed. The error is printed below.\n")
+		fmt.Fprintf(w, "%s", cmd)
+		return
+	}
+	if err == nil {
+		fmt.Fprintf(w, "  [5/6] Successfully enabled autostart on VPS.\n")
+	}
+
+	startDomainArgs := []string{"start", domainName}
+	cmd = exec.Command("virsh", startDomainArgs...)
+	stdout, err = cmd.Output()
+	if err != nil {
+		fmt.Println(err.Error())
+		fmt.Println(cmd)
+		fmt.Fprintf(w, "  [6/6] Error, starting VPS failed. The error is printed below.\n")
+		fmt.Fprintf(w, "%s", cmd)
+		return
+	}
+
+	if err == nil {
+		fmt.Fprintf(w, "  [6/6] Sucessfully started VPS!\n")
+		fmt.Fprintf(w, "\n\n  VPS Name: %s\n", domainName)
+	}
+
 }
 
 /*func getDomains(w http.ResponseWriter, r *http.Request){
