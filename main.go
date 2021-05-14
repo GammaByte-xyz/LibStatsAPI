@@ -23,26 +23,16 @@ type Article struct {
 
 type Articles []Article
 
-func allArticles(w http.ResponseWriter, r *http.Request) {
-	articles := Articles{
-		Article{Title: "Test Title", Desc: "Test Desc.", Content: "Hello World"},
-	}
-
-	fmt.Println("Endpoint Hit: All articles endpoint")
-	json.NewEncoder(w).Encode(articles)
-}
 
 func homePage(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Homepage Endpoint Hit\n")
+	fmt.Fprintf(w, "API Endpoint Hit\n")
 }
 
 func handleRequests() {
 	http.HandleFunc("/", homePage)
-	http.HandleFunc("/articles", allArticles)
 	http.HandleFunc("/api/kvm/stats", getStats)
-	// http.HandleFunc("/api/kvm/domains", getDomains)
+	http.HandleFunc("/api/kvm/domains", getDomains)
 	http.HandleFunc("/api/kvm/ram-usage", getRamUsage)
-
 	http.HandleFunc("/api/kvm/create/domain", createDomain)
 	log.Fatal(http.ListenAndServe(":8082", nil))
 }
@@ -134,6 +124,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	if err == nil {
 		fmt.Fprintf(w, "\n  [1/6] Request recieved! Provisioning VM...\n")
+		fmt.Fprintf(w, "  ------------------------------------------\n")
 	}
 
 	fmt.Printf("RAM => %dGB\n", t.RamSize)
@@ -157,6 +148,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "  User Role => %s\n", t.UserRole)
 	fmt.Fprintf(w, "\n")
 	fmt.Fprintf(w, "  VM Creation Date: %s\n\n", t.CreationDate)
+	fmt.Fprintf(w, "  ------------------------------------------")
 
 	rand.Seed(time.Now().UnixNano())
 	randID := random(1, 2000000)
@@ -165,15 +157,8 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	domainName := fmt.Sprintf("VPS-%d", domainID)
 
-	//fmt.Fprintf(w, domainName)
-
 	DomUuidRaw := uuid.Must(uuid.NewV4())
 	DomUUID := DomUuidRaw.String()
-
-	/*ramPtr := uintptr(t.RamSize)
-	cpuPtr := uintptr(t.CpuSize)*/
-
-	//var ramPtr int = *(*int)(unsafe.Pointer(&t.RamSize))
 
 	qcow2Name := fmt.Sprintf("%s%s%s", "/mnt/vmblocknew/", domainName, ".qcow2")
 	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
@@ -432,12 +417,12 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//fmt.Fprintf(w, "%s\n", xmldoc)
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		log.Fatalf("Failed! \nReason: %s\n", err)
 		log.Fatalf("Failed to connect to qemu.n\n")
 	}
+	defer conn.Close()
 
 	if err == nil {
 		fmt.Fprintf(w, "  [3/6] Successfully connected to QEMU-KVM!\n")
@@ -489,9 +474,9 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 }
 
-/*func getDomains(w http.ResponseWriter, r *http.Request){
+func getDomains(w http.ResponseWriter, r *http.Request){
 
-	conn, err := libvirt.NewConnect("qemu+ssh://root@alpha1-host2/system?socket=/var/run/libvirt/libvirt-sock")
+	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		log.Fatalf("failed to connect to qemu")
 	}
@@ -509,4 +494,4 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Printf("%d\n", len(doms))
-}*/
+}
