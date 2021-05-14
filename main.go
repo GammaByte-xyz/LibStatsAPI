@@ -343,7 +343,6 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 			libvirtxml.DomainGraphic{
 				VNC: &libvirtxml.DomainGraphicVNC{
 					AutoPort:    "yes",
-					Keymap:      "us",
 					SharePolicy: "ignore",
 					Listen:      "0.0.0.0",
 				},
