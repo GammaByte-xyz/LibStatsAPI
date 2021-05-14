@@ -6,7 +6,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"github.com/libvirt/libvirt-go"
-	uuid "github.com/satori/go.uuid"
 	"libvirt.org/libvirt-go-xml"
 	"log"
 	"math/rand"
@@ -22,7 +21,6 @@ type Article struct {
 }
 
 type Articles []Article
-
 
 func homePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "API Endpoint Hit\n")
@@ -123,7 +121,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil {
-		fmt.Fprintf(w, "\n  [1/6] Request recieved! Provisioning VM...\n")
+		fmt.Fprintf(w, "\n  [1/6] Request received! Provisioning VM...\n")
 		fmt.Fprintf(w, "  ------------------------------------------\n")
 	}
 
@@ -157,8 +155,8 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	domainName := fmt.Sprintf("VPS-%d", domainID)
 
-	DomUuidRaw := uuid.Must(uuid.NewV4())
-	DomUUID := DomUuidRaw.String()
+	//DomUuidRaw := uuid.Must(uuid.NewV4()).String()
+	//DomUUID := DomUuidRaw
 
 	qcow2Name := fmt.Sprintf("%s%s%s", "/mnt/vmblocknew/", domainName, ".qcow2")
 	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
@@ -367,7 +365,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		Type:                 "kvm",
 		ID:                   &domainID,
 		Name:                 domainName,
-		UUID:                 DomUUID,
+		UUID:                 "",
 		Title:                domainName,
 		Description:          domainName,
 		Metadata:             nil,
@@ -468,13 +466,13 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err == nil {
-		fmt.Fprintf(w, "  [6/6] Sucessfully started VPS!\n")
+		fmt.Fprintf(w, "  [6/6] Successfully started VPS!\n")
 		fmt.Fprintf(w, "\n\n  VPS Name: %s\n", domainName)
 	}
 
 }
 
-func getDomains(w http.ResponseWriter, r *http.Request){
+func getDomains(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
@@ -488,7 +486,7 @@ func getDomains(w http.ResponseWriter, r *http.Request){
 		name, err := dom.GetName()
 		if err == nil {
 			fmt.Printf("  %s\n", name)
-			fmt.Fprintf(w,"%s\n", name)
+			fmt.Fprintf(w, "%s\n", name)
 		}
 		dom.Free()
 	}
