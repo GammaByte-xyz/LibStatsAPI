@@ -55,22 +55,6 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(stdout))
 }
 
-/*func getDomains(w http.ResponseWriter, r *http.Request) {
-	args := []string{"getStats.sh", "-d"}
-
-	cmd := exec.Command("bash", args...)
-	stdout, err := cmd.Output()
-
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-	fmt.Println(cmd)
-	fmt.Println(string(stdout))
-	fmt.Fprintf(w, string(stdout))
-}*/
-
 func getRamUsage(w http.ResponseWriter, r *http.Request) {
 	args := []string{"getStats.sh", "-r"}
 
@@ -154,9 +138,6 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	domainID := randID
 
 	domainName := fmt.Sprintf("VPS-%d", domainID)
-
-	//DomUuidRaw := uuid.Must(uuid.NewV4()).String()
-	//DomUUID := DomUuidRaw
 
 	qcow2Name := fmt.Sprintf("%s%s%s", "/mnt/vmblocknew/", domainName, ".qcow2")
 	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
@@ -358,53 +339,46 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 				},
 			},
 		},
+		Graphics: []libvirtxml.DomainGraphic{
+			libvirtxml.DomainGraphic{
+				VNC: &libvirtxml.DomainGraphicVNC{
+					AutoPort:    "yes",
+					Keymap:      "us",
+					SharePolicy: "ignore",
+					Listen:      "0.0.0.0",
+				},
+			},
+		},
 	}
 
 	domcfg := &libvirtxml.Domain{
-		XMLName:              xml.Name{},
-		Type:                 "kvm",
-		ID:                   &domainID,
-		Name:                 domainName,
-		UUID:                 "",
-		Title:                domainName,
-		Description:          domainName,
-		Metadata:             nil,
-		MaximumMemory:        nil,
-		Memory:               ramConfMemory,
-		CurrentMemory:        ramConfCurrentMemory,
-		BlockIOTune:          nil,
-		MemoryTune:           nil,
-		MemoryBacking:        nil,
-		VCPU:                 cpuConfVCPU,
-		VCPUs:                nil,
-		IOThreads:            2,
-		IOThreadIDs:          nil,
-		CPUTune:              nil,
-		Resource:             nil,
-		SysInfo:              confSysInfo,
-		Bootloader:           "",
-		BootloaderArgs:       "",
-		OS:                   confDomainOS,
-		IDMap:                nil,
-		Features:             nil,
-		CPU:                  confCPUType,
-		Clock:                confClock,
-		OnPoweroff:           "destroy",
-		OnReboot:             "restart",
-		OnCrash:              "restart",
-		PM:                   nil,
-		Perf:                 nil,
-		Devices:              confDevices,
-		SecLabel:             nil,
-		KeyWrap:              nil,
-		LaunchSecurity:       nil,
-		QEMUCommandline:      nil,
-		QEMUCapabilities:     nil,
-		QEMUDeprecation:      nil,
-		LXCNamespace:         nil,
-		BHyveCommandline:     nil,
-		VMWareDataCenterPath: nil,
-		XenCommandline:       nil,
+		XMLName:       xml.Name{},
+		Type:          "kvm",
+		ID:            &domainID,
+		Name:          domainName,
+		Title:         domainName,
+		Description:   domainName,
+		Metadata:      nil,
+		MaximumMemory: nil,
+		Memory:        ramConfMemory,
+		CurrentMemory: ramConfCurrentMemory,
+		BlockIOTune:   nil,
+		MemoryTune:    nil,
+		MemoryBacking: nil,
+		VCPU:          cpuConfVCPU,
+		VCPUs:         nil,
+		IOThreads:     2,
+		IOThreadIDs:   nil,
+		CPUTune:       nil,
+		Resource:      nil,
+		SysInfo:       confSysInfo,
+		OS:            confDomainOS,
+		CPU:           confCPUType,
+		Clock:         confClock,
+		OnPoweroff:    "destroy",
+		OnReboot:      "restart",
+		OnCrash:       "restart",
+		Devices:       confDevices,
 	}
 
 	xmldoc, err := domcfg.Marshal()
