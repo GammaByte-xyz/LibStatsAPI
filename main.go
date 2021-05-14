@@ -142,7 +142,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	qcow2Name := fmt.Sprintf("%s%s%s", "/mnt/vmblocknew/", domainName, ".qcow2")
 	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
 
-	qcow2Args := []string{"create", "-f", "qcow2", qcow2Name, qcow2Size}
+	qcow2Args := []string{"create", "-f", "qcow2", "-o", "preallocation=metadata", qcow2Name, qcow2Size}
 	cmd := exec.Command("qemu-img", qcow2Args...)
 	stdout, err := cmd.Output()
 	if err != nil {
