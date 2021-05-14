@@ -143,7 +143,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	domainImagePath := fmt.Sprintf("/mnt/vmblocknew/%s.qcow2", domainName)
 
-	img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize))
+	img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize)*1000000000)
 	imgJson, err := json.Marshal(img)
 
 	if err != nil {
