@@ -141,35 +141,35 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	domainName := fmt.Sprintf("VPS-%d", domainID)
 
-	qcow2Name := fmt.Sprintf("%s%s%s", "/mnt/vmblocknew/", domainName, ".qcow2")
-	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
+	domainImagePath := fmt.Sprintf("/mnt/vmblocknew/%s.qcow2", domainName)
 
-	qcow2Args := []string{"create", "-f", "qcow2", "-o", "preallocation=metadata", qcow2Name, qcow2Size}
-	cmd := exec.Command("qemu-img", qcow2Args...)
-	stdout, err := cmd.Output()
+	img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize))
+	imgJson, err := json.Marshal(img)
+
+	if err != nil {
+		fmt.Fprintf(w, "%s\n", string(imgJson))
+	}
+
+	err = img.Create()
 	if err != nil {
 		fmt.Println(err.Error())
-		fmt.Println(qcow2Args)
-		fmt.Println(cmd)
-		fmt.Println(string(stdout))
-		fmt.Fprintf(w, string(stdout))
 		fmt.Fprintf(w, "  [2/6] Error, VPS disk failed to provision. The error is printed below.\n")
 		errcode := fmt.Sprintf("  %s\n", err)
 		fmt.Fprintf(w, errcode)
 		return
 	}
+
 	if err == nil {
 		fmt.Fprintf(w, "  [2/6] VPS disk successfully created!\n")
 	}
 
-	chmodArgs := []string{"777", "/mnt/vmblocknew/", qcow2Name}
-	cmd = exec.Command("chmod", chmodArgs...)
-	stdout, err = cmd.Output()
+	chmodArgs := []string{"777", domainImagePath}
+	cmd := exec.Command("chmod", chmodArgs...)
+	stdout, err := cmd.Output()
+
 	if err != nil {
-		fmt.Println(err.Error())
-		fmt.Println(cmd)
-		fmt.Fprintf(w, "  [2.5/6] Error, changing permissions of VPS disk failed. The error is printed below.\n")
-		fmt.Fprintf(w, "%s", cmd)
+		fmt.Fprintf(w, "Error: Could not change image permissions.\nSTDOUT:  %s\n", string(stdout))
+		fmt.Fprintf(w, "Error Message: %s\n", err)
 	}
 
 	var ramConfMemory *libvirtxml.DomainMemory = &libvirtxml.DomainMemory{
@@ -523,11 +523,11 @@ func testPath(w http.ResponseWriter, r *http.Request) {
 	imgJson, err := json.Marshal(img)
 
 	if err == nil {
-		fmt.Fprintf(w, string(imgJson))
+		fmt.Fprintf(w, "%s\n", string(imgJson))
 	}
 
 	if err != nil {
-		fmt.Fprintf(w, string(imgJson))
+		fmt.Fprintf(w, "%s\n", string(imgJson))
 	}
 
 	err = img.Create()
