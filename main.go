@@ -145,8 +145,8 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "  Full Name => %s\n", t.FullName)
 	fmt.Fprintf(w, "  User Role => %s\n", t.UserRole)
 	fmt.Fprintf(w, "\n")
-	fmt.Fprintf(w, "  VM Creation Date: %s\n\n", t.CreationDate)
-	fmt.Fprintf(w, "  ------------------------------------------")
+	fmt.Fprintf(w, "  VM Creation Date: %s\n", t.CreationDate)
+	fmt.Fprintf(w, "  ------------------------------------------\n")
 
 	rand.Seed(time.Now().UnixNano())
 	randID := random(1, 2000000)
