@@ -1,9 +1,12 @@
 package main
 
+import "C"
 import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/libvirt/libvirt-go"
+	uuid "github.com/satori/go.uuid"
 	"libvirt.org/libvirt-go-xml"
 	"log"
 	"math/rand"
@@ -129,6 +132,10 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err == nil {
+		fmt.Fprintf(w, "  [1/4] Request recieved! Provisioning VM...\n")
+	}
+
 	fmt.Printf("RAM => %dGB\n", t.RamSize)
 	fmt.Printf("vCPUs => %d\n", t.CpuSize)
 	fmt.Printf("Disk Size => %dGB\n", t.DiskSize)
@@ -144,71 +151,279 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	randID := random(1, 2000000)
 	fmt.Printf("Random Domain ID: %d\n", randID)
 	domainID := randID
-	domainName := fmt.Sprintf("VPS-%d\n", int(domainID))
 
-	fmt.Fprintf(w, domainName)
+	domainName := fmt.Sprintf("VPS-%d", domainID)
 
-	domcfg := &libvirtxml.Domain{
-		Type: "kvm",
-		Name: domainName,
-		UUID: "8f99e332-06c4-463a-9099-330fb244e1b3",
+	//fmt.Fprintf(w, domainName)
+
+	DomUuidRaw := uuid.Must(uuid.NewV4())
+	DomUUID := DomUuidRaw.String()
+
+	/*ramPtr := uintptr(t.RamSize)
+	cpuPtr := uintptr(t.CpuSize)*/
+
+	//var ramPtr int = *(*int)(unsafe.Pointer(&t.RamSize))
+
+	qcow2Name := fmt.Sprintf("%s%s%s", "/mnt/vmblocknew/", domainName, ".qcow2")
+	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
+
+	qcow2Args := []string{"create", "-f", "qcow2", qcow2Name, qcow2Size}
+	cmd := exec.Command("qemu-img", qcow2Args...)
+	stdout, err := cmd.Output()
+	if err != nil {
+		fmt.Println(err.Error())
+		fmt.Println(qcow2Args)
+		fmt.Println(cmd)
+		fmt.Println(string(stdout))
+		fmt.Fprintf(w, string(stdout))
+		fmt.Fprintf(w, "  [2/4] Error, VPS disk failed to provision. The error is printed below.\n")
+		errcode := fmt.Sprintf("  %s\n", err)
+		fmt.Fprintf(w, errcode)
+		return
+	}
+	if err == nil {
+		fmt.Fprintf(w, "  [2/4] VPS disk successfully created!\n")
 	}
 
-	xmldoc, err := xml.Marshal(domcfg)
-	fmt.Fprintf(w, xmldoc)
+	var ramConfMemory *libvirtxml.DomainMemory = &libvirtxml.DomainMemory{
+		Unit:  "GiB",
+		Value: uint(t.RamSize),
+	}
 
-	// Will end up figuring this out later lol
+	var ramConfCurrentMemory *libvirtxml.DomainCurrentMemory = &libvirtxml.DomainCurrentMemory{
+		Value: uint(t.RamSize),
+		Unit:  "GiB",
+	}
 
-	/*domain := &libvirtxml.Domain{
-		XMLName: xml.Name{
-			Space: "GammaByte.xyz",
-			Local: "VM",
+	var cpuConfVCPU *libvirtxml.DomainVCPU = &libvirtxml.DomainVCPU{
+		Current: uint(t.CpuSize),
+		Value:   uint(t.CpuSize),
+	}
+
+	var confDomainOS *libvirtxml.DomainOS = &libvirtxml.DomainOS{
+		Type: &libvirtxml.DomainOSType{
+			Type:    "hvm",
+			Machine: "pc-q35-rhel8.2.0",
+			Arch:    "x86_64",
 		},
-		Type:        "kvm",
-		ID:          &domainID,
-		Name:        domainName,
-		Title:       domainName,
-		Description: domainName,
-		Metadata: &libvirtxml.DomainMetadata{
-			XML: "",
+		FirmwareInfo: &libvirtxml.DomainOSFirmwareInfo{
+			Features: nil,
 		},
-		Memory: (*libvirtxml.DomainMemory)(unsafe.Pointer(&t.RamSize)),
-		VCPU:   (*libvirtxml.DomainVCPU)(unsafe.Pointer(&t.CpuSize)),
-		OS: &libvirtxml.DomainOS{
-			BootDevices: []libvirtxml.DomainBootDevice{
-				libvirtxml.DomainBootDevice{
-					Dev: "vda",
+		InitUser:  "root",
+		InitGroup: "root",
+		BootMenu: &libvirtxml.DomainBootMenu{
+			Enable:  "yes",
+			Timeout: "4000",
+		},
+		SMBios: &libvirtxml.DomainSMBios{
+			Mode: "sysinfo",
+		},
+	}
+
+	var confSysInfo = []libvirtxml.DomainSysInfo{
+		libvirtxml.DomainSysInfo{
+			SMBIOS: &libvirtxml.DomainSysInfoSMBIOS{
+				BIOS: &libvirtxml.DomainSysInfoBIOS{
+					Entry: []libvirtxml.DomainSysInfoEntry{
+						libvirtxml.DomainSysInfoEntry{
+							Name:  "vendor",
+							Value: "GammaByte.xyz",
+						},
+					},
 				},
-			},
-			Type: &libvirtxml.DomainOSType{
-				Arch: "x86_64",
-				Type: "hvm",
-			},
-		},
-		OnCrash:    "restart",
-		OnPoweroff: "destroy",
-		OnReboot:   "restart",
-		Devices: &libvirtxml.DomainDeviceList{
-			Emulator: "/usr/bin/kvm-spice",
-			Graphics: []libvirtxml.DomainGraphic{
-				libvirtxml.DomainGraphic{
-					VNC: &libvirtxml.DomainGraphicVNC{
-						AutoPort: "yes",
-						Listen:   "0.0.0.0",
-						Listeners: []libvirtxml.DomainGraphicListener{
-							libvirtxml.DomainGraphicListener{
-								Address: &libvirtxml.DomainGraphicListenerAddress{
-									Address: "0.0.0.0",
-								},
+				System: &libvirtxml.DomainSysInfoSystem{
+					Entry: []libvirtxml.DomainSysInfoEntry{
+						libvirtxml.DomainSysInfoEntry{
+							Name:  "manufacturer",
+							Value: "GammaByte.xyz",
+						},
+						libvirtxml.DomainSysInfoEntry{
+							Name:  "product",
+							Value: "HPC VPS",
+						},
+						libvirtxml.DomainSysInfoEntry{
+							Name:  "version",
+							Value: "v4.8.1",
+						},
+					},
+				},
+				BaseBoard: []libvirtxml.DomainSysInfoBaseBoard{
+					libvirtxml.DomainSysInfoBaseBoard{
+						Entry: []libvirtxml.DomainSysInfoEntry{
+							libvirtxml.DomainSysInfoEntry{
+								Name:  "manufacturer",
+								Value: "GammaByte.xyz",
+							},
+							libvirtxml.DomainSysInfoEntry{
+								Name:  "product",
+								Value: "HPC VPS",
+							},
+							libvirtxml.DomainSysInfoEntry{
+								Name:  "version",
+								Value: "v4.8.1",
 							},
 						},
 					},
 				},
 			},
 		},
+		libvirtxml.DomainSysInfo{
+			FWCfg: &libvirtxml.DomainSysInfoFWCfg{
+				Entry: []libvirtxml.DomainSysInfoEntry{
+					libvirtxml.DomainSysInfoEntry{
+						Name:  "vendor",
+						Value: "GammaByte.xyz",
+					},
+				},
+			},
+		},
 	}
-	fmt.Printf("%s\n", domain)
-	fmt.Fprintf(w,"%s\n", domain)*/
+
+	var confCPUType *libvirtxml.DomainCPU = &libvirtxml.DomainCPU{
+		Mode:       "custom",
+		Migratable: "on",
+		Check:      "none",
+		Topology: &libvirtxml.DomainCPUTopology{
+			Sockets: 1,
+			Cores:   t.CpuSize,
+			Threads: 1,
+		},
+		Cache: &libvirtxml.DomainCPUCache{
+			Level: 3,
+			Mode:  "emulate",
+		},
+		Features: nil,
+	}
+
+	var confClock *libvirtxml.DomainClock = &libvirtxml.DomainClock{
+		TimeZone: "utc",
+	}
+
+	var confDevices = &libvirtxml.DomainDeviceList{
+		Disks: []libvirtxml.DomainDisk{
+			libvirtxml.DomainDisk{
+				Device: "cdrom",
+				Driver: &libvirtxml.DomainDiskDriver{
+					Name: "qemu",
+					Type: "raw",
+				},
+				Source: &libvirtxml.DomainDiskSource{
+					File: &libvirtxml.DomainDiskSourceFile{
+						File: "/mnt/vmblocknew/isos/netboot.xyz.iso",
+					},
+				},
+				Target: &libvirtxml.DomainDiskTarget{
+					Dev: "vdb",
+					Bus: "sata",
+				},
+				Boot: &libvirtxml.DomainDeviceBoot{
+					Order: 2,
+				},
+				ReadOnly: &libvirtxml.DomainDiskReadOnly{},
+			},
+			libvirtxml.DomainDisk{
+				Driver: &libvirtxml.DomainDiskDriver{
+					Cache:       "none",
+					IO:          "native",
+					ErrorPolicy: "stop",
+				},
+				Source: &libvirtxml.DomainDiskSource{
+					File: &libvirtxml.DomainDiskSourceFile{
+						File:     fmt.Sprint(domainName, ".qcow2"),
+						SecLabel: nil,
+					},
+				},
+				Target: &libvirtxml.DomainDiskTarget{
+					Dev: "vda",
+					Bus: "virtio",
+				},
+				Boot: &libvirtxml.DomainDeviceBoot{
+					Order: 1,
+				},
+			},
+		},
+		Interfaces: []libvirtxml.DomainInterface{
+			libvirtxml.DomainInterface{
+				Model: &libvirtxml.DomainInterfaceModel{
+					Type: "virtio",
+				},
+				Source: &libvirtxml.DomainInterfaceSource{
+					Network: &libvirtxml.DomainInterfaceSourceNetwork{
+						Network: "default",
+					},
+				},
+			},
+		},
+	}
+
+	domcfg := &libvirtxml.Domain{
+		XMLName:              xml.Name{},
+		Type:                 "kvm",
+		ID:                   &domainID,
+		Name:                 domainName,
+		UUID:                 DomUUID,
+		Title:                domainName,
+		Description:          domainName,
+		Metadata:             nil,
+		MaximumMemory:        nil,
+		Memory:               ramConfMemory,
+		CurrentMemory:        ramConfCurrentMemory,
+		BlockIOTune:          nil,
+		MemoryTune:           nil,
+		MemoryBacking:        nil,
+		VCPU:                 cpuConfVCPU,
+		VCPUs:                nil,
+		IOThreads:            2,
+		IOThreadIDs:          nil,
+		CPUTune:              nil,
+		Resource:             nil,
+		SysInfo:              confSysInfo,
+		Bootloader:           "",
+		BootloaderArgs:       "",
+		OS:                   confDomainOS,
+		IDMap:                nil,
+		Features:             nil,
+		CPU:                  confCPUType,
+		Clock:                confClock,
+		OnPoweroff:           "destroy",
+		OnReboot:             "restart",
+		OnCrash:              "restart",
+		PM:                   nil,
+		Perf:                 nil,
+		Devices:              confDevices,
+		SecLabel:             nil,
+		KeyWrap:              nil,
+		LaunchSecurity:       nil,
+		QEMUCommandline:      nil,
+		QEMUCapabilities:     nil,
+		QEMUDeprecation:      nil,
+		LXCNamespace:         nil,
+		BHyveCommandline:     nil,
+		VMWareDataCenterPath: nil,
+		XenCommandline:       nil,
+	}
+
+	xmldoc, err := domcfg.Marshal()
+
+	if err != nil {
+		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.")
+		fmt.Fprintf(w, "Err --> %s\n", err)
+		return
+	}
+
+	fmt.Fprintf(w, "%s\n", xmldoc)
+	libvirt.NewConnect("qemu:///system")
+	conn := libvirt.Connect{}
+	dom, err := conn.DomainDefineXML(xmldoc)
+
+	if err != nil {
+		fmt.Fprintf(w, "Failed to define new domain from XML. Exiting.")
+		fmt.Fprintf(w, "Err --> %s\n", err)
+		return
+	}
+
+	fmt.Sprintf("%s", dom)
+	fmt.Fprintf(w, "%s", dom)
 }
 
 /*func getDomains(w http.ResponseWriter, r *http.Request){
