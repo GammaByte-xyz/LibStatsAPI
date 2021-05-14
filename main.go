@@ -37,6 +37,10 @@ func handleRequests() {
 	log.Fatal(http.ListenAndServe(":8082", nil))
 }
 
+const (
+	GiB = 1073741824 // 1 GiB = 2^30 bytes
+)
+
 func main() {
 	handleRequests()
 }
@@ -143,8 +147,10 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	domainImagePath := fmt.Sprintf("/mnt/vmblocknew/%s.qcow2", domainName)
 
-	img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize)*1000000000)
+	img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize)*GiB)
 	imgJson, err := json.Marshal(img)
+
+	fmt.Fprintf(w, "%s\n", string(imgJson))
 
 	if err != nil {
 		fmt.Fprintf(w, "%s\n", string(imgJson))
