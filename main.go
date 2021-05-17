@@ -14,18 +14,12 @@ import (
 	"time"
 )
 
-/*type Article struct {
-	Title   string `json:"Title"`
-	Desc    string `json:"desc"`
-	Content string `json:"content"`
-}
-
-type Articles []Article*/
-
+// Verify functionality of API with the "/" URI path
 func homePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "API Endpoint Hit\n")
 }
 
+// Handle all HTTP requests on different paths
 func handleRequests() {
 	http.HandleFunc("/", homePage)
 	http.HandleFunc("/test", testPath)
@@ -36,14 +30,17 @@ func handleRequests() {
 	log.Fatal(http.ListenAndServe(":8082", nil))
 }
 
+// This is 1 GiB (gibibyte) in bytes
 const (
 	GiB = 1073741824 // 1 GiB = 2^30 bytes
 )
 
+// Main function that always runs
 func main() {
 	handleRequests()
 }
 
+// Retrieve statistics of the host
 func getStats(w http.ResponseWriter, r *http.Request) {
 	args := []string{"getStats.sh", "-a"}
 
@@ -60,6 +57,7 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(stdout))
 }
 
+// Retrieve the ram usage of the host
 func getRamUsage(w http.ResponseWriter, r *http.Request) {
 	args := []string{"getStats.sh", "-r"}
 
@@ -76,34 +74,50 @@ func getRamUsage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(stdout))
 }
 
+// Set values for alphabetic random string generation
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+const (
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+)
+
+// Values parsed from JSON API input that can be used later
 type createDomainStruct struct {
 	// VM Specs
-	RamSize         int    `json:"RamSize,string,omitempty"`
-	CpuSize         int    `json:"CpuSize,string,omitempty"`
-	DiskSize        int    `json:"DiskSize,string,omitempty"`
-	OperatingSystem string `json:"OperatingSystem"`
-	Network         string `json:"Network"`
+	RamSize            int    `json:"RamSize,string,omitempty"`
+	CpuSize            int    `json:"CpuSize,string,omitempty"`
+	DiskSize           int    `json:"DiskSize,string,omitempty"`
+	OperatingSystem    string `json:"OperatingSystem"`
+	Network            string `json:"Network"`
+	VncPasswordEnabled bool   `json:"VncPasswordEnabled"`
+	VncPassword        string `json:"VncPassword"`
 
 	// User Information
 	UserEmail string `json:"UserEmail"`
 	UserID    int    `json:"UserID,string,omitempty"`
 	FullName  string `json:"FullName"`
 	UserRole  string `json:"UserRole"`
+	Username  string `json:"Username"`
 
 	// Misc. Data
 	CreationDate string
 }
 
+// Generate a random integer for the VPS ID
 func random(min int, max int) int {
 	return rand.Intn(max-min) + min
 }
 
+// Create the VPS
 func createDomain(w http.ResponseWriter, r *http.Request) {
+	// Decode JSON & assign the json value struct to a variable we can use here
 	decoder := json.NewDecoder(r.Body)
 	var t *createDomainStruct = &createDomainStruct{}
 
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
+	// Decode the struct internally
 	err := decoder.Decode(&t)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -115,6 +129,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  ------------------------------------------\n")
 	}
 
+	// Print values to both console and API output
 	fmt.Printf("RAM => %dGB\n", t.RamSize)
 	fmt.Printf("vCPUs => %d\n", t.CpuSize)
 	fmt.Printf("Disk Size => %dGB\n", t.DiskSize)
@@ -122,6 +137,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("User Email => %s\n", t.UserEmail)
 	fmt.Printf("User ID => %d\n", t.UserID)
 	fmt.Printf("Full Name => %s\n", t.FullName)
+	fmt.Printf("Username => %s\n", t.Username)
 	fmt.Printf("User Role => %s\n", t.UserRole)
 	fmt.Printf("\n")
 	fmt.Printf("VM Creation Date: %s\n", t.CreationDate)
@@ -133,21 +149,24 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "  User Email => %s\n", t.UserEmail)
 	fmt.Fprintf(w, "  User ID => %d\n", t.UserID)
 	fmt.Fprintf(w, "  Full Name => %s\n", t.FullName)
+	fmt.Fprintf(w, "  Username => %s\n", t.FullName)
 	fmt.Fprintf(w, "  User Role => %s\n", t.UserRole)
 	fmt.Fprintf(w, "\n")
 	fmt.Fprintf(w, "  VM Creation Date: %s\n", t.CreationDate)
 	fmt.Fprintf(w, "  ------------------------------------------\n")
 
+	// Set random ID
 	rand.Seed(time.Now().UnixNano())
 	randID := random(1, 2000000)
 	fmt.Printf("Random Domain ID: %d\n", randID)
 	domainID := randID
 
-	domainName := fmt.Sprintf("VPS-%d", domainID)
+	domainName := fmt.Sprintf("%s-VPS-%d", t.Username, domainID)
 
 	qcow2Name := fmt.Sprintf("%s%s", "/mnt/vmblocknew/", domainName)
 	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
 
+	// Provision VPS at specified location
 	qcow2Args := []string{"create", "-f", "qcow2", "-o", "preallocation=metadata", qcow2Name, qcow2Size}
 	cmd := exec.Command("qemu-img", qcow2Args...)
 	stdout, err := cmd.Output()
@@ -166,6 +185,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  [2/6] VPS disk successfully created!\n")
 	}
 
+	// Change permissions of VPS disk so that qemu can interface with it over NFS
 	chmodArgs := []string{"777", "/mnt/vmblocknew/", qcow2Name}
 	cmd = exec.Command("chmod", chmodArgs...)
 	stdout, err = cmd.Output()
@@ -176,6 +196,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "%s", cmd)
 	}
 
+	// ALl the variables below set the pointers that libvirt-go can understand
 	var ramConfMemory *libvirtxml.DomainMemory = &libvirtxml.DomainMemory{
 		Unit:  "GiB",
 		Value: uint(t.RamSize),
@@ -256,14 +277,30 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 						},
 					},
 				},
-			},
-		},
-		libvirtxml.DomainSysInfo{
-			FWCfg: &libvirtxml.DomainSysInfoFWCfg{
-				Entry: []libvirtxml.DomainSysInfoEntry{
-					libvirtxml.DomainSysInfoEntry{
-						Name:  "vendor",
-						Value: "GammaByte.xyz",
+				Chassis: &libvirtxml.DomainSysInfoChassis{
+					Entry: []libvirtxml.DomainSysInfoEntry{
+						libvirtxml.DomainSysInfoEntry{
+							Name:  "manufacturer",
+							Value: "GammaByte.xyz",
+						},
+						libvirtxml.DomainSysInfoEntry{
+							Name:  "version",
+							Value: "v4.8.1",
+						},
+						libvirtxml.DomainSysInfoEntry{
+							Name:  "sku",
+							Value: "GammaByte.xyz",
+						},
+					},
+				},
+				Processor: []libvirtxml.DomainSysInfoProcessor{
+					libvirtxml.DomainSysInfoProcessor{
+						Entry: []libvirtxml.DomainSysInfoEntry{
+							libvirtxml.DomainSysInfoEntry{
+								Name:  "manufacturer",
+								Value: "GammaByte.xyz",
+							},
+						},
 					},
 				},
 			},
@@ -271,7 +308,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var confCPUType *libvirtxml.DomainCPU = &libvirtxml.DomainCPU{
-		Mode:       "custom",
+		Mode:       "host-passthrough",
 		Migratable: "on",
 		Check:      "none",
 		Topology: &libvirtxml.DomainCPUTopology{
@@ -290,7 +327,10 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		TimeZone: "utc",
 	}
 
-	var confDevices = &libvirtxml.DomainDeviceList{
+	var outboundPeak = new(int)
+	*outboundPeak = 50000
+
+	var confDevices *libvirtxml.DomainDeviceList = &libvirtxml.DomainDeviceList{
 		Disks: []libvirtxml.DomainDisk{
 			libvirtxml.DomainDisk{
 				Device: "cdrom",
@@ -310,11 +350,10 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 				Boot: &libvirtxml.DomainDeviceBoot{
 					Order: 2,
 				},
-				ReadOnly: &libvirtxml.DomainDiskReadOnly{},
 			},
 			libvirtxml.DomainDisk{
 				Driver: &libvirtxml.DomainDiskDriver{
-					Cache:       "none",
+					Cache:       "directsync",
 					IO:          "native",
 					ErrorPolicy: "stop",
 				},
@@ -324,23 +363,49 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 						SecLabel: nil,
 					},
 				},
+				BlockIO: &libvirtxml.DomainDiskBlockIO{
+					LogicalBlockSize:  512,
+					PhysicalBlockSize: 8192,
+				},
 				Target: &libvirtxml.DomainDiskTarget{
 					Dev: "vda",
 					Bus: "virtio",
 				},
+				IOTune: &libvirtxml.DomainDiskIOTune{
+					ReadBytesSec:  146800640,
+					WriteBytesSec: 89128960,
+				},
 				Boot: &libvirtxml.DomainDeviceBoot{
 					Order: 1,
+				},
+				Alias: &libvirtxml.DomainAlias{
+					Name: domainName,
 				},
 			},
 		},
 		Interfaces: []libvirtxml.DomainInterface{
 			libvirtxml.DomainInterface{
-				Model: &libvirtxml.DomainInterfaceModel{
-					Type: "virtio",
-				},
 				Source: &libvirtxml.DomainInterfaceSource{
 					Network: &libvirtxml.DomainInterfaceSourceNetwork{
 						Network: t.Network,
+					},
+				},
+				Model: &libvirtxml.DomainInterfaceModel{
+					Type: "virtio",
+				},
+				FilterRef: &libvirtxml.DomainInterfaceFilterRef{
+					Filter: "no-localnet",
+				},
+				Bandwidth: &libvirtxml.DomainInterfaceBandwidth{
+					Outbound: &libvirtxml.DomainInterfaceBandwidthParams{
+						Peak:    outboundPeak,
+						Average: outboundPeak,
+						Burst:   outboundPeak,
+					},
+					Inbound: &libvirtxml.DomainInterfaceBandwidthParams{
+						Peak:    outboundPeak,
+						Average: outboundPeak,
+						Burst:   outboundPeak,
 					},
 				},
 			},
@@ -354,8 +419,16 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 				},
 			},
 		},
+		Videos: []libvirtxml.DomainVideo{
+			libvirtxml.DomainVideo{
+				Model: libvirtxml.DomainVideoModel{
+					Type: "qxl",
+				},
+			},
+		},
 	}
 
+	// Assign the variables shown above to the domcfg var, which is of the type "&libvirtxml.domain"
 	domcfg := &libvirtxml.Domain{
 		XMLName:       xml.Name{},
 		Type:          "kvm",
@@ -386,8 +459,15 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		Devices:       confDevices,
 	}
 
+	// Parse the values into human readable XML
 	xmldoc, err := domcfg.Marshal()
+	if err != nil {
+		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.\n")
+		fmt.Fprintf(w, "Err --> %s\n", err)
+		return
+	}
 
+	// Connect to qemu-kvm
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		log.Fatalf("Failed! \nReason: %s\n", err)
@@ -399,12 +479,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  [2/6] Successfully connected to QEMU-KVM!\n")
 	}
 
-	if err != nil {
-		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.\n")
-		fmt.Fprintf(w, "Err --> %s\n", err)
-		return
-	}
-
+	// Finally, define the VPS
 	dom, err := conn.DomainDefineXML(xmldoc)
 
 	if err != nil {
@@ -419,6 +494,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println(dom)
 
+	// Configure the VPS to automatically start when the host boots
 	autostartDomainArgs := []string{"autostart", domainName}
 	cmd = exec.Command("virsh", autostartDomainArgs...)
 	stdout, err = cmd.Output()
@@ -433,6 +509,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  [6/6] Successfully enabled autostart on VPS.\n")
 	}
 
+	// Start the VPS now
 	startDomainArgs := []string{"start", domainName}
 	cmd = exec.Command("virsh", startDomainArgs...)
 	stdout, err = cmd.Output()
@@ -451,6 +528,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 }
 
+// Get the existing domains and print them
 func getDomains(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
@@ -473,6 +551,7 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%d\n", len(doms))
 }
 
+// This is a useless testing function that is/was only used for development purposes
 func testPath(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
