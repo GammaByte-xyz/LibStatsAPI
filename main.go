@@ -38,6 +38,23 @@ const (
 // Main function that always runs
 func main() {
 	handleRequests()
+
+	go func() {
+		setIP()
+	}()
+}
+
+// Generate a MAC address to use for the VPS
+func genMac() string {
+	buf := make([]byte, 6)
+	_, err := rand.Read(buf)
+	if err != nil {
+		fmt.Println("error:", err)
+		return ""
+	}
+	buf[0] =  (buf[0] | 2) & 0xfe // Set local bit, ensure unicast address
+	macAddr := fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x\n", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
+	return macAddr
 }
 
 // Retrieve statistics of the host
@@ -197,6 +214,8 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ALl the variables below set the pointers that libvirt-go can understand
+	var macAddr = genMac()
+
 	var ramConfMemory *libvirtxml.DomainMemory = &libvirtxml.DomainMemory{
 		Unit:  "GiB",
 		Value: uint(t.RamSize),
@@ -385,6 +404,9 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		},
 		Interfaces: []libvirtxml.DomainInterface{
 			libvirtxml.DomainInterface{
+				MAC: &libvirtxml.DomainInterfaceMAC{
+					Address: macAddr,
+				},
 				Source: &libvirtxml.DomainInterfaceSource{
 					Network: &libvirtxml.DomainInterfaceSourceNetwork{
 						Network: t.Network,
@@ -427,6 +449,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 	}
+
 
 	// Assign the variables shown above to the domcfg var, which is of the type "&libvirtxml.domain"
 	domcfg := &libvirtxml.Domain{
@@ -485,6 +508,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Fprintf(w, "Failed to define new domain from XML. Exiting.\n")
 		fmt.Fprintf(w, "Err --> %s\n", err)
+		fmt.Fprintf(w, "VPS MAC Address: %s\n", macAddr)
 		return
 	}
 
@@ -502,6 +526,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(err.Error())
 		fmt.Println(cmd)
 		fmt.Fprintf(w, "  [6/6] Error, autostart configuration setup of VPS failed. The error is printed below.\n")
+		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 		fmt.Fprintf(w, "%s", cmd)
 		return
 	}
@@ -518,14 +543,24 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(cmd)
 		fmt.Fprintf(w, "  [6/6] Error, starting VPS failed. The error is printed below.\n")
 		fmt.Fprintf(w, "%s\n", cmd)
+		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 		return
 	}
 
 	if err == nil {
 		fmt.Fprintf(w, "  [6/6] Successfully started VPS!\n")
 		fmt.Fprintf(w, "\n\n  VPS Name: %s\n", domainName)
+		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 	}
 
+}
+
+
+// Set the IP address of the VM based on the MAC
+func setIP() {
+	for {
+		exec.Command("addLeases.sh")
+	}
 }
 
 // Get the existing domains and print them
