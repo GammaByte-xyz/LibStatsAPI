@@ -22,11 +22,11 @@ func homePage(w http.ResponseWriter, r *http.Request) {
 // Handle all HTTP requests on different paths
 func handleRequests() {
 	http.HandleFunc("/", homePage)
-	http.HandleFunc("/test", testPath)
 	http.HandleFunc("/api/kvm/stats", getStats)
 	http.HandleFunc("/api/kvm/domains", getDomains)
 	http.HandleFunc("/api/kvm/ram-usage", getRamUsage)
 	http.HandleFunc("/api/kvm/create/domain", createDomain)
+	http.HandleFunc("/api/kvm/delete/domain", deleteDomain)
 	log.Fatal(http.ListenAndServe(":8082", nil))
 }
 
@@ -702,110 +702,63 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%d\n", len(doms))
 }
 
-// This is a useless testing function that is/was only used for development purposes
-func testPath(w http.ResponseWriter, r *http.Request) {
+// Delete domain based on values
+type deleteDomainStruct struct {
+	VpsName string `json:"VpsName"`
+	VpsUUID []byte `json:"VpsUUID"`
+	VpsID   int    `json:"VpsID,string,omitempty"`
+}
 
+func deleteDomain(w http.ResponseWriter, r *http.Request) {
+	// Create a new decoder
 	decoder := json.NewDecoder(r.Body)
-	var t *createDomainStruct = &createDomainStruct{}
+	var t *deleteDomainStruct = &deleteDomainStruct{}
 
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
+	// Decode the struct internally
 	err := decoder.Decode(&t)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
-
-	if err == nil {
-		/*fmt.Fprintf(w, "\n  [1/6] Request received! Provisioning VM...\n")
-		fmt.Fprintf(w, "  ------------------------------------------\n")*/
-	}
-
-	fmt.Printf("RAM => %dGB\n", t.RamSize)
-	fmt.Printf("vCPUs => %d\n", t.CpuSize)
-	fmt.Printf("Disk Size => %dGB\n", t.DiskSize)
-	fmt.Printf("Operating System => %s\n", t.OperatingSystem)
-	fmt.Printf("User Email => %s\n", t.UserEmail)
-	fmt.Printf("User ID => %d\n", t.UserID)
-	fmt.Printf("Full Name => %s\n", t.FullName)
-	fmt.Printf("User Role => %s\n", t.UserRole)
-	fmt.Printf("\n")
-	fmt.Printf("VM Creation Date: %s\n", t.CreationDate)
-
-	/*fmt.Fprintf(w, "  RAM => %dGB\n", t.RamSize)
-	fmt.Fprintf(w, "  vCPUs => %d\n", t.CpuSize)
-	fmt.Fprintf(w, "  Disk Size => %dGB\n", t.DiskSize)
-	fmt.Fprintf(w, "  Operating System => %s\n", t.OperatingSystem)
-	fmt.Fprintf(w, "  User Email => %s\n", t.UserEmail)
-	fmt.Fprintf(w, "  User ID => %d\n", t.UserID)
-	fmt.Fprintf(w, "  Full Name => %s\n", t.FullName)
-	fmt.Fprintf(w, "  User Role => %s\n", t.UserRole)
-	fmt.Fprintf(w, "\n")
-	fmt.Fprintf(w, "  VM Creation Date: %s\n", t.CreationDate)
-	fmt.Fprintf(w, "  ------------------------------------------\n")
-	*/
-	/*rand.Seed(time.Now().UnixNano())
-	randID := random(1, 2000000)
-	fmt.Printf("Random Domain ID: %d\n", randID)
-	domainID := randID*/
-
-	//domainName := fmt.Sprintf("VPS-%d", domainID)
-
-	//domainImagePath := fmt.Sprintf("/mnt/vmblocknew/%s.qcow2", domainName)
-
-	/*img := qemu.NewImage(domainImagePath, qemu.ImageFormatQCOW2, uint64(t.DiskSize))
-	imgJson, err := json.Marshal(img)
-
-	if err == nil {
-		fmt.Fprintf(w, "%s\n", string(imgJson))
-	}
-
+	// Connect to Qemu-KVM/Libvirt
+	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		fmt.Fprintf(w, "%s\n", string(imgJson))
+		log.Fatalf("failed to connect to qemu")
 	}
+	defer conn.Close()
 
-	err = img.Create()
-	if err != nil {
-		log.Fatal(err)
-	}*/
-
-	/*qemuImg := qemu.Image{
-		ActualSize:            uint64(t.DiskSize),
-		BackingFilename:       domainName,
-		BackingFilenameFormat: "qcow2",
-		BackingImage: struct {
-			ActualSize  uint64 `json:"actual-size"`
-			Dirty       bool   `json:"dirty-flag"`
-			Filename    string `json:"filename"`
-			Format      string `json:"format"`
-			VirtualSize uint64 `json:"virtual-size"`
-		}{
-			ActualSize: uint64(t.DiskSize),
-			Dirty: false,
-			Filename: domainName,
-			Format: "qcow2",
-			VirtualSize: uint64(t.DiskSize),
-		},
-		Filename:    domainName,
-		Format:      "qcow2",
-		FormatSpecific: struct {
-			Data struct {
-				Compat        string `json:"compat"`
-				Corrupt       bool   `json:"corrupt"`
-				LazyRefcounts bool   `json:"lazy-refcounts"`
-				RefcountBits  int    `json:"refcount-bits"`
-			} `json:"data"`
-			Type string `json:"type"`
-		}{
-			Type: "qcow2",
-		},
-		VirtualSize: uint64(t.DiskSize),
+	if t.VpsID != 0 {
+		domain, _ := conn.LookupDomainById(uint32(t.VpsID))
+		fmt.Fprintf(w, "Domain to delete: %s\n", domain)
+		domain.Destroy()
+		err := domain.Undefine()
+		if err != nil {
+			fmt.Fprintf(w, "Error undefining domain: %s\n", err)
+			return
+		}
 	}
-
-
-
-	qemuImgJson, err := json.Marshal(qemuImg)
-
-	fmt.Fprintf(w, "%s\n", qemuImgJson)*/
+	if t.VpsName != "" {
+		domain, _ := conn.LookupDomainByName(t.VpsName)
+		fmt.Fprintf(w, "Domain to delete: %s\n", domain)
+		domain.Destroy()
+		err := domain.Undefine()
+		if err != nil {
+			fmt.Fprintf(w, "Error undefining domain: %s\n", err)
+			return
+		}
+	}
+	if t.VpsUUID != nil {
+		domain, _ := conn.LookupDomainByUUID(t.VpsUUID)
+		fmt.Fprintf(w, "Domain to delete: %s\n", domain)
+		domain.Destroy()
+		err := domain.Undefine()
+		if err != nil {
+			fmt.Fprintf(w, "Error undefining domain: %s\n", err)
+			return
+		}
+	}
 
 }
