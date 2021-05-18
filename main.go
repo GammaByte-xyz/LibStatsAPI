@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"github.com/libvirt/libvirt-go"
+	"golang.org/x/tools/go/ssa/interp/testdata/src/os"
 	"libvirt.org/libvirt-go-xml"
 	"log"
 	"math/rand"
@@ -192,6 +193,9 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  [2/6] Error, VPS disk failed to provision. The error is printed below.\n")
 		errcode := fmt.Sprintf("  %s\n", err)
 		fmt.Fprintf(w, errcode)
+		revertArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertArgs...)
+		log.Fatal("Failed.")
 		return
 	}
 	if err == nil {
@@ -207,6 +211,10 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Println(cmd)
 		fmt.Fprintf(w, "  [2.5/6] Error, changing permissions of VPS disk failed. The error is printed below.\n")
 		fmt.Fprintf(w, "%s", cmd)
+		revertArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertArgs...)
+		log.Fatal("Failed.")
+		return
 	}
 
 	// ALl the variables below set the pointers that libvirt-go can understand
@@ -483,6 +491,9 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.\n")
 		fmt.Fprintf(w, "Err --> %s\n", err)
+		revertArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertArgs...)
+		log.Fatal("Failed.")
 		return
 	}
 
@@ -491,6 +502,10 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Fatalf("Failed! \nReason: %s\n", err)
 		log.Fatalf("Failed to connect to qemu.n\n")
+		revertArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertArgs...)
+		log.Fatal("Failed.")
+		return
 	}
 	defer conn.Close()
 
@@ -505,6 +520,9 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Failed to define new domain from XML. Exiting.\n")
 		fmt.Fprintf(w, "Err --> %s\n", err)
 		fmt.Fprintf(w, "VPS MAC Address: %s\n", macAddr)
+		revertArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertArgs...)
+		log.Fatal("Failed.")
 		return
 	}
 
@@ -524,6 +542,9 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  [6/6] Error, autostart configuration setup of VPS failed. The error is printed below.\n")
 		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 		fmt.Fprintf(w, "%s", cmd)
+		revertArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertArgs...)
+		log.Fatal("Failed.")
 		return
 	}
 	if err == nil {
@@ -540,6 +561,11 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  [6/6] Error, starting VPS failed. The error is printed below.\n")
 		fmt.Fprintf(w, "%s\n", cmd)
 		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
+		revertDiskArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertDiskArgs...)
+		log.Fatal("Failed.")
+		RevertDomainArgs := []string{"undefine", domainName}
+		exec.Command("virsh", RevertDomainArgs...)
 		return
 	}
 
@@ -549,16 +575,22 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 	}
 
-	domIP := setIP(t.Network, macAddr, domainName)
+	domIP := setIP(t.Network, macAddr, domainName, qcow2Name)
 	fmt.Fprintf(w, "  VPS IP: %s\n", domIP)
 
 }
 
 // Set the IP address of the VM based on the MAC
-func setIP(network string, macAddr string, domainName string) string {
+func setIP(network string, macAddr string, domainName string, qcow2Name string) string {
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		log.Fatalf("Failed to connect to qemu")
+		revertDiskArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertDiskArgs...)
+		log.Fatal("Failed.")
+		RevertDomainArgs := []string{"undefine", domainName}
+		exec.Command("virsh", RevertDomainArgs...)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
@@ -568,10 +600,22 @@ func setIP(network string, macAddr string, domainName string) string {
 	fmt.Printf("Network: %s\n", network)
 	if err != nil {
 		fmt.Printf("Error: Could not find network: %s\n%s\n", net, err)
+		revertDiskArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertDiskArgs...)
+		log.Fatal("Failed.")
+		RevertDomainArgs := []string{"undefine", domainName}
+		exec.Command("virsh", RevertDomainArgs...)
+		os.Exit(1)
 	}
 	leases, err := net.GetDHCPLeases()
 	if err != nil {
 		fmt.Printf("Error: Could not get leases: %s\n%s\n", leases, err)
+		revertDiskArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertDiskArgs...)
+		log.Fatal("Failed.")
+		RevertDomainArgs := []string{"undefine", domainName}
+		exec.Command("virsh", RevertDomainArgs...)
+		os.Exit(1)
 	}
 
 	ipMap := map[string]struct{}{}
@@ -614,10 +658,16 @@ func setIP(network string, macAddr string, domainName string) string {
 		net.Update(libvirt.NETWORK_UPDATE_COMMAND_ADD_LAST, dhSection, -1, string(dhLeaseString), netUpdateFlags2)
 		if err != nil {
 			log.Fatalf("Failed to update network. Error: \n%s\n", err)
+			revertDiskArgs := []string{"-rf", qcow2Name}
+			exec.Command("rm", revertDiskArgs...)
+			log.Fatal("Failed.")
+			RevertDomainArgs := []string{"undefine", domainName}
+			exec.Command("virsh", RevertDomainArgs...)
+			os.Exit(1)
 		}
 
 	} else if exists == true {
-		setIP(network, macAddr, domainName)
+		setIP(network, macAddr, domainName, qcow2Name)
 	}
 
 	return randIP
