@@ -353,6 +353,13 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	var outboundPeak = new(int)
 	*outboundPeak = 50000
 
+	// Check input values for sanity (GammaByte.xyz Specific)
+
+	if t.Network != "default" || t.Network != "infranet" {
+		fmt.Fprintf(w, "Network %s not found!", t.Network)
+		log.Fatalf("Network %s not found!", t.Network)
+	}
+
 	var confDevices *libvirtxml.DomainDeviceList = &libvirtxml.DomainDeviceList{
 		Disks: []libvirtxml.DomainDisk{
 			libvirtxml.DomainDisk{
