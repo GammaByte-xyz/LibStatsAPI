@@ -6,7 +6,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"github.com/libvirt/libvirt-go"
-	"golang.org/x/tools/go/ssa/interp/testdata/src/os"
 	"libvirt.org/libvirt-go-xml"
 	"log"
 	"math/rand"
@@ -590,7 +589,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 		log.Fatal("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
-		os.Exit(1)
+		return ""
 	}
 	defer conn.Close()
 
@@ -605,7 +604,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 		log.Fatal("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
-		os.Exit(1)
+		return ""
 	}
 	leases, err := net.GetDHCPLeases()
 	if err != nil {
@@ -615,7 +614,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 		log.Fatal("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
-		os.Exit(1)
+		return ""
 	}
 
 	ipMap := map[string]struct{}{}
@@ -663,7 +662,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 			log.Fatal("Failed.")
 			RevertDomainArgs := []string{"undefine", domainName}
 			exec.Command("virsh", RevertDomainArgs...)
-			os.Exit(1)
+			return ""
 		}
 
 	} else if exists == true {
