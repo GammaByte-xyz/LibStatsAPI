@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Added exit in the case of missing network">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Fixed it lol">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/main.go" afterDir="false" />
     </list>
@@ -106,6 +106,7 @@
     <MESSAGE value="Added revert" />
     <MESSAGE value="Removed os calls because it's broken af" />
     <MESSAGE value="Added exit in the case of missing network" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added exit in the case of missing network" />
+    <MESSAGE value="Fixed it lol" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed it lol" />
   </component>
 </project>

@@ -355,7 +355,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	// Check input values for sanity (GammaByte.xyz Specific)
 
-	if t.Network == "default" || t.Network == "infranet" {
+	if t.Network != "default" && t.Network != "infranet" {
 		fmt.Fprintf(w, "Network %s not found!", t.Network)
 		log.Fatalf("Network %s not found!", t.Network)
 	}
