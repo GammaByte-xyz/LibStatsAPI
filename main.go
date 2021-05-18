@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -705,8 +706,6 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 // Delete domain based on values
 type deleteDomainStruct struct {
 	VpsName string `json:"VpsName"`
-	VpsUUID []byte `json:"VpsUUID"`
-	VpsID   int    `json:"VpsID,string,omitempty"`
 }
 
 func deleteDomain(w http.ResponseWriter, r *http.Request) {
@@ -730,35 +729,31 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	if t.VpsID != 0 {
-		domain, _ := conn.LookupDomainById(uint32(t.VpsID))
-		fmt.Fprintf(w, "Domain to delete: %s\n", domain)
-		domain.Destroy()
-		err := domain.Undefine()
-		if err != nil {
-			fmt.Fprintf(w, "Error undefining domain: %s\n", err)
-			return
-		}
-	}
 	if t.VpsName != "" {
 		domain, _ := conn.LookupDomainByName(t.VpsName)
-		fmt.Fprintf(w, "Domain to delete: %s\n", domain)
-		domain.Destroy()
-		err := domain.Undefine()
-		if err != nil {
-			fmt.Fprintf(w, "Error undefining domain: %s\n", err)
-			return
+		fmt.Fprintf(w, "Domain to delete: %s\n", t.VpsName)
+		e := domain.Destroy()
+		if e != nil {
+			fmt.Fprintf(w, "Error destroying domain: %s (Force shutdown)\n", t.VpsName)
+		} else {
+			fmt.Fprintf(w, "Domain %s was forcefully shut down.\n", t.VpsName)
 		}
-	}
-	if t.VpsUUID != nil {
-		domain, _ := conn.LookupDomainByUUID(t.VpsUUID)
-		fmt.Fprintf(w, "Domain to delete: %s\n", domain)
-		domain.Destroy()
-		err := domain.Undefine()
-		if err != nil {
-			fmt.Fprintf(w, "Error undefining domain: %s\n", err)
-			return
+		e = domain.Undefine()
+		if e != nil {
+			fmt.Fprintf(w, "Error undefining the domain %s\n.", t.VpsName)
+		} else {
+			fmt.Fprintf(w, "Domain %s was undefined successfully.\n", t.VpsName)
 		}
+		fileName := fmt.Sprintf("/mnt/vmblocknew/%s", t.VpsName)
+		e = os.Remove(fileName)
+		if e != nil {
+			fmt.Fprintf(w, "Domain disk (%s) has failed to purge.\n", fileName)
+			log.Fatal(e)
+		} else {
+			fmt.Fprintf(w, "Domain disk (%s) was successfully wiped & purged.\n", fileName)
+		}
+	} else if t.VpsName == "" {
+		fmt.Fprintf(w, "Please specify a domain with the JSON object: 'VpsName'\n")
 	}
 
 }
