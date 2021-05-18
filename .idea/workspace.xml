@@ -4,9 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Added a *lot* of new functionality &amp; tuning.">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/main.go" afterDir="false" />
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Replaced the god awful bash script with a real Golang adaptation. I need coffee.">
+      <change beforePath="$PROJECT_DIR$/addLeases.sh" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -101,6 +100,7 @@
     <MESSAGE value="Fixed math and addded debug print statement" />
     <MESSAGE value="Reverted back to old methods" />
     <MESSAGE value="Added a *lot* of new functionality &amp; tuning." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added a *lot* of new functionality &amp; tuning." />
+    <MESSAGE value="Replaced the god awful bash script with a real Golang adaptation. I need coffee." />
+    <option name="LAST_COMMIT_MESSAGE" value="Replaced the god awful bash script with a real Golang adaptation. I need coffee." />
   </component>
 </project>
