@@ -38,10 +38,6 @@ const (
 // Main function that always runs
 func main() {
 	handleRequests()
-
-	go func() {
-		setIP()
-	}()
 }
 
 // Generate a MAC address to use for the VPS
@@ -52,8 +48,8 @@ func genMac() string {
 		fmt.Println("error:", err)
 		return ""
 	}
-	buf[0] =  (buf[0] | 2) & 0xfe // Set local bit, ensure unicast address
-	macAddr := fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x\n", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
+	buf[0] = (buf[0] | 2) & 0xfe // Set local bit, ensure unicast address
+	macAddr := fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5])
 	return macAddr
 }
 
@@ -117,7 +113,7 @@ type createDomainStruct struct {
 	Username  string `json:"Username"`
 
 	// Misc. Data
-	CreationDate string
+	CreationDate string `json:"CreationDate"`
 }
 
 // Generate a random integer for the VPS ID
@@ -346,6 +342,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		TimeZone: "utc",
 	}
 
+	// Generate outbound peak in bytes
 	var outboundPeak = new(int)
 	*outboundPeak = 50000
 
@@ -450,7 +447,6 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-
 	// Assign the variables shown above to the domcfg var, which is of the type "&libvirtxml.domain"
 	domcfg := &libvirtxml.Domain{
 		XMLName:       xml.Name{},
@@ -553,14 +549,78 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 	}
 
+	domIP := setIP(t.Network, macAddr, domainName)
+	fmt.Fprintf(w, "  VPS IP: %s\n", domIP)
+
 }
 
-
 // Set the IP address of the VM based on the MAC
-func setIP() {
-	for {
-		exec.Command("addLeases.sh")
+func setIP(network string, macAddr string, domainName string) string {
+	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
+	if err != nil {
+		log.Fatalf("Failed to connect to qemu")
 	}
+	defer conn.Close()
+
+	// TODO GENERATE IP ADDRESS AND ASSIGN IT TO THE VM
+
+	net, err := conn.LookupNetworkByName(network)
+	fmt.Printf("Network: %s\n", network)
+	if err != nil {
+		fmt.Printf("Error: Could not find network: %s\n%s\n", net, err)
+	}
+	leases, err := net.GetDHCPLeases()
+	if err != nil {
+		fmt.Printf("Error: Could not get leases: %s\n%s\n", leases, err)
+	}
+
+	ipMap := map[string]struct{}{}
+
+	for _, lease := range leases {
+		fmt.Printf("  %s\n", lease.IPaddr)
+		ipMap[lease.IPaddr] = struct{}{}
+	}
+
+	rand.Seed(time.Now().Unix())
+	randIP := fmt.Sprintf("%d.%d.%d.%d", 192, 168, 2, rand.Intn(254))
+
+	_, exists := ipMap[randIP]
+	fmt.Printf("  IP Exists: %b\n", exists)
+	fmt.Printf("  Random IP: %s\n", randIP)
+
+	if exists == false {
+		dhLease := &libvirtxml.NetworkDHCPHost{
+			MAC:  macAddr,
+			Name: domainName,
+			IP:   randIP,
+		}
+		dhSection := libvirt.NetworkUpdateSection(4)
+
+		var dhLeaseString, _ = xml.Marshal(dhLease)
+		fmt.Printf("%s\n", dhLeaseString)
+
+		netUpdateFlags0 := libvirt.NetworkUpdateFlags(0)
+
+		// This one only updates the live state of the network, which is not what we want. We want persistent AND live updates
+		//netUpdateFlags1 := libvirt.NetworkUpdateFlags(1)
+
+		netUpdateFlags2 := libvirt.NetworkUpdateFlags(2)
+
+		net.Update(libvirt.NETWORK_UPDATE_COMMAND_ADD_LAST, dhSection, -1, string(dhLeaseString), netUpdateFlags0)
+
+		// This one only updates the live state of the network, which is not what we want. We want persistent AND live updates
+		//net.Update(libvirt.NETWORK_UPDATE_COMMAND_ADD_LAST, dhSection, -1, string(dhLeaseString), netUpdateFlags1)
+
+		net.Update(libvirt.NETWORK_UPDATE_COMMAND_ADD_LAST, dhSection, -1, string(dhLeaseString), netUpdateFlags2)
+		if err != nil {
+			log.Fatalf("Failed to update network. Error: \n%s\n", err)
+		}
+
+	} else if exists == true {
+		setIP(network, macAddr, domainName)
+	}
+
+	return randIP
 }
 
 // Get the existing domains and print them
