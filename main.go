@@ -2,10 +2,13 @@ package main
 
 import "C"
 import (
+	"database/sql"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/libvirt/libvirt-go"
+	"golang.org/x/net/context"
 	"libvirt.org/libvirt-go-xml"
 	"log"
 	"math/rand"
@@ -587,8 +590,57 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 }
 
+type domainNetworkDomainName struct {
+	DomainName string `json:"DomainName"`
+	Details    domainNetworks
+}
+
+// Write values to JSON file with this data struct
+type domainNetworks struct {
+	NetworkName string `json:"NetworkName"`
+	MacAddress  string `json:"MacAddress"`
+	IpAddress   string `json:"IpAddress"`
+}
+
+type dbValues struct {
+	DomainName  string
+	NetworkName string
+	MacAddress  string
+	IpAddress   string
+}
+
 // Set the IP address of the VM based on the MAC
 func setIP(network string, macAddr string, domainName string, qcow2Name string) string {
+
+	// Connect to MariaDB
+	db, err := sql.Open("mysql", "root:yourPassword@tcp(127.0.0.1:3306)/lsapi")
+
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text)`
+
+	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err := db.ExecContext(ctx, query)
+	if err != nil {
+		log.Fatalf("Error %s when creating domaininfo table", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		log.Fatalf("Error %s when getting rows affected", err)
+	}
+	log.Printf("Rows affected when creating table: %d", rows)
+
+	// Connect to Qemu
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		log.Fatalf("Failed to connect to qemu")
@@ -677,7 +729,75 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 		setIP(network, macAddr, domainName, qcow2Name)
 	}
 
+	/*domNets := "/etc/gammabyte/lsapi/DomainNetworks.json"
+	err = checkFile(domNets)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	file, err := ioutil.ReadFile(domNets)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	data := []domainNetworkDomainName{}
+
+	json.Unmarshal(file, &data)
+
+	ipStruct := &domainNetworkDomainName{
+		DomainName: domainName,
+		Details: domainNetworks{
+			NetworkName: network,
+			MacAddress:  macAddr,
+			IpAddress:   randIP,
+		},
+	}
+
+	data = append(data, *ipStruct)
+
+	// Prepare the new data to be marshalled & written to the config file
+	dataBytes, err := json.Marshal(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = ioutil.WriteFile(domNets, dataBytes, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	*/
+
+	// Generate the insert string
+	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address) VALUES ('%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP)
+	sqlData := insertData
+	fmt.Printf(sqlData)
+
+	res, err = db.Exec(sqlData)
+
+	if err != nil {
+		panic(err.Error())
+	}
+
+	lastId, err := res.LastInsertId()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("The last inserted row id: %d\n", lastId)
+
 	return randIP
+}
+
+func checkFile(filename string) error {
+	_, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		_, err := os.Create(filename)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Get the existing domains and print them
@@ -709,6 +829,18 @@ type deleteDomainStruct struct {
 }
 
 func deleteDomain(w http.ResponseWriter, r *http.Request) {
+	// Connect to MariaDB
+	db, err := sql.Open("mysql", "root:yourPassword@tcp(127.0.0.1:3306)/lsapi")
+
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
 	// Create a new decoder
 	decoder := json.NewDecoder(r.Body)
 	var t *deleteDomainStruct = &deleteDomainStruct{}
@@ -717,7 +849,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
 	// Decode the struct internally
-	err := decoder.Decode(&t)
+	err = decoder.Decode(&t)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -729,9 +861,56 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
+	// Check to see if the VPS name has been defined. If not, notify endpoint & exit.
 	if t.VpsName != "" {
 		domain, _ := conn.LookupDomainByName(t.VpsName)
 		fmt.Fprintf(w, "Domain to delete: %s\n", t.VpsName)
+
+		//netUpdateFlags0 := libvirt.NetworkUpdateFlags(0)
+		//netUpdateFlags2 := libvirt.NetworkUpdateFlags(2)
+
+		// Get domain network
+		//domConnect, _ := domain.DomainGetConnect()
+		//network, _ := domConnect.ListNetworks()
+
+		//fmt.Fprintf(w, "%s\n", network)
+
+		//net, err := conn.LookupNetworkByName(network)
+
+		var d dbValues
+		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
+		fmt.Println(queryData)
+		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName)
+		fmt.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		dhSection := libvirt.NetworkUpdateSection(4)
+
+		dhLeaseString := fmt.Sprintf("<host mac='%s'/>", d.MacAddress)
+		fmt.Printf("%s\n", dhLeaseString)
+
+		netUpdateFlags0 := libvirt.NetworkUpdateFlags(0)
+
+		// This one only updates the live state of the network, which is not what we want. We want persistent AND live updates
+		netUpdateFlags1 := libvirt.NetworkUpdateFlags(1)
+
+		netUpdateFlags2 := libvirt.NetworkUpdateFlags(2)
+
+		net, err := conn.LookupNetworkByName(d.NetworkName)
+		fmt.Println("Net: ", d.NetworkName)
+
+		net.Update(libvirt.NETWORK_UPDATE_COMMAND_DELETE, dhSection, -1, string(dhLeaseString), netUpdateFlags0)
+
+		// This one only updates the live state of the network, which is not what we want. We want persistent AND live updates
+		net.Update(libvirt.NETWORK_UPDATE_COMMAND_ADD_LAST, dhSection, -1, string(dhLeaseString), netUpdateFlags1)
+
+		net.Update(libvirt.NETWORK_UPDATE_COMMAND_DELETE, dhSection, -1, string(dhLeaseString), netUpdateFlags2)
+		if err != nil {
+			log.Fatalf("Failed to update network. Error: \n%s\n", err)
+		}
+
 		e := domain.Destroy()
 		if e != nil {
 			fmt.Fprintf(w, "Error destroying domain: %s (Force shutdown)\n", t.VpsName)
