@@ -174,7 +174,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	// Set random ID
 	rand.Seed(time.Now().UnixNano())
-	randID := random(1, 2000000)
+	randID := random(1, 99999999999)
 	fmt.Printf("Random Domain ID: %d\n", randID)
 	domainID := randID
 
@@ -607,6 +607,7 @@ type dbValues struct {
 	NetworkName string
 	MacAddress  string
 	IpAddress   string
+	DiskPath    string
 }
 
 // Set the IP address of the VM based on the MAC
@@ -624,7 +625,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 	// executing
 	defer db.Close()
 
-	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text)`
+	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text)`
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -768,7 +769,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 	*/
 
 	// Generate the insert string
-	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address) VALUES ('%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP)
+	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address, disk_path) VALUES ('%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP, qcow2Name)
 	sqlData := insertData
 	fmt.Printf(sqlData)
 
@@ -878,10 +879,10 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		//net, err := conn.LookupNetworkByName(network)
 
 		var d dbValues
-		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
+		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network, disk_path FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
 		fmt.Println(queryData)
-		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName)
-		fmt.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName)
+		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName, &d.DiskPath)
+		fmt.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n Disk Path: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName, d.DiskPath)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -924,7 +925,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "Domain %s was undefined successfully.\n", t.VpsName)
 		}
 		fileName := fmt.Sprintf("/mnt/vmblocknew/%s", t.VpsName)
-		e = os.Remove(fileName)
+		e = os.Remove(d.DiskPath)
 		if e != nil {
 			fmt.Fprintf(w, "Domain disk (%s) has failed to purge.\n", fileName)
 			log.Fatal(e)
