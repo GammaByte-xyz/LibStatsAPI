@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Added some various fixes" />
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Added some various fixes">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/main.go" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -83,7 +86,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Small optimizations, finalized broken bits, added pretty logging" />
     <MESSAGE value="Small eye candy tweaks" />
     <MESSAGE value="More eye candy..." />
     <MESSAGE value="Small beautifications" />
@@ -108,6 +110,7 @@
     <MESSAGE value="Added more verbose response messages" />
     <MESSAGE value="Added MariaDB integration to store domain data permanently" />
     <MESSAGE value="Added some various fixes" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added some various fixes" />
+    <MESSAGE value="Added requirement for YAML config file to store secrets" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added requirement for YAML config file to store secrets" />
   </component>
 </project>

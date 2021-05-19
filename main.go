@@ -9,12 +9,15 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/libvirt/libvirt-go"
 	"golang.org/x/net/context"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"libvirt.org/libvirt-go-xml"
 	"log"
 	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -31,7 +34,21 @@ func handleRequests() {
 	http.HandleFunc("/api/kvm/ram-usage", getRamUsage)
 	http.HandleFunc("/api/kvm/create/domain", createDomain)
 	http.HandleFunc("/api/kvm/delete/domain", deleteDomain)
-	log.Fatal(http.ListenAndServe(":8082", nil))
+
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
+
+	// Listen on specified port
+	log.Fatal(http.ListenAndServe(listenAddr, nil))
 }
 
 // This is 1 GiB (gibibyte) in bytes
@@ -98,6 +115,15 @@ const (
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
 )
 
+type configFile struct {
+	VolumePath    string `yaml:"volume_path"`
+	ListenPort    string `yaml:"listen_port"`
+	ListenAddress string `yaml:"listen_address"`
+	SqlPassword   string `yaml:"sql_password"`
+	Manufacturer  string `yaml:"vm_manufacturer"`
+	SqlUser       string `yaml:"sql_user"`
+}
+
 // Values parsed from JSON API input that can be used later
 type createDomainStruct struct {
 	// VM Specs
@@ -127,6 +153,16 @@ func random(min int, max int) int {
 
 // Create the VPS
 func createDomain(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
 	// Decode JSON & assign the json value struct to a variable we can use here
 	decoder := json.NewDecoder(r.Body)
 	var t *createDomainStruct = &createDomainStruct{}
@@ -135,7 +171,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
 	// Decode the struct internally
-	err := decoder.Decode(&t)
+	err = decoder.Decode(&t)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -180,7 +216,8 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	domainName := fmt.Sprintf("%s-VPS-%d", t.Username, domainID)
 
-	qcow2Name := fmt.Sprintf("%s%s", "/mnt/vmblocknew/", domainName)
+	// ConfigFile.VolumePath REQUIRES A TRAILING SLASH
+	qcow2Name := fmt.Sprintf("%s%s", ConfigFile.VolumePath, domainName)
 	qcow2Size := fmt.Sprintf("%d%s", t.DiskSize, "G")
 
 	// Provision VPS at specified location
@@ -265,7 +302,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 					Entry: []libvirtxml.DomainSysInfoEntry{
 						libvirtxml.DomainSysInfoEntry{
 							Name:  "vendor",
-							Value: "GammaByte.xyz",
+							Value: ConfigFile.Manufacturer,
 						},
 					},
 				},
@@ -273,7 +310,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 					Entry: []libvirtxml.DomainSysInfoEntry{
 						libvirtxml.DomainSysInfoEntry{
 							Name:  "manufacturer",
-							Value: "GammaByte.xyz",
+							Value: ConfigFile.Manufacturer,
 						},
 						libvirtxml.DomainSysInfoEntry{
 							Name:  "product",
@@ -290,7 +327,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 						Entry: []libvirtxml.DomainSysInfoEntry{
 							libvirtxml.DomainSysInfoEntry{
 								Name:  "manufacturer",
-								Value: "GammaByte.xyz",
+								Value: ConfigFile.Manufacturer,
 							},
 							libvirtxml.DomainSysInfoEntry{
 								Name:  "product",
@@ -307,7 +344,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 					Entry: []libvirtxml.DomainSysInfoEntry{
 						libvirtxml.DomainSysInfoEntry{
 							Name:  "manufacturer",
-							Value: "GammaByte.xyz",
+							Value: ConfigFile.Manufacturer,
 						},
 						libvirtxml.DomainSysInfoEntry{
 							Name:  "version",
@@ -315,7 +352,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 						},
 						libvirtxml.DomainSysInfoEntry{
 							Name:  "sku",
-							Value: "GammaByte.xyz",
+							Value: ConfigFile.Manufacturer,
 						},
 					},
 				},
@@ -324,7 +361,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 						Entry: []libvirtxml.DomainSysInfoEntry{
 							libvirtxml.DomainSysInfoEntry{
 								Name:  "manufacturer",
-								Value: "GammaByte.xyz",
+								Value: ConfigFile.Manufacturer,
 							},
 						},
 					},
@@ -393,7 +430,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 				},
 				Source: &libvirtxml.DomainDiskSource{
 					File: &libvirtxml.DomainDiskSourceFile{
-						File:     fmt.Sprint("/mnt/vmblocknew/", domainName),
+						File:     fmt.Sprintf("%s%s", ConfigFile.VolumePath, domainName),
 						SecLabel: nil,
 					},
 				},
@@ -608,13 +645,24 @@ type dbValues struct {
 	MacAddress  string
 	IpAddress   string
 	DiskPath    string
+	TimeCreated string
 }
 
 // Set the IP address of the VM based on the MAC
 func setIP(network string, macAddr string, domainName string, qcow2Name string) string {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	db, err := sql.Open("mysql", "root:yourPassword@tcp(127.0.0.1:3306)/lsapi")
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
 
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -625,7 +673,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 	// executing
 	defer db.Close()
 
-	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text)`
+	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text)`
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -768,8 +816,10 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 	}
 	*/
 
+	// Get the current date/time
+	dt := time.Now()
 	// Generate the insert string
-	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address, disk_path) VALUES ('%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP, qcow2Name)
+	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address, disk_path, time_created) VALUES ('%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP, qcow2Name, dt.String())
 	sqlData := insertData
 	fmt.Printf(sqlData)
 
@@ -830,8 +880,20 @@ type deleteDomainStruct struct {
 }
 
 func deleteDomain(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
 	// Connect to MariaDB
-	db, err := sql.Open("mysql", "root:yourPassword@tcp(127.0.0.1:3306)/lsapi")
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+	// Connect to MariaDB
 
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -879,10 +941,10 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		//net, err := conn.LookupNetworkByName(network)
 
 		var d dbValues
-		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network, disk_path FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
+		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network, disk_path, time_created FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
 		fmt.Println(queryData)
-		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName, &d.DiskPath)
-		fmt.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n Disk Path: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName, d.DiskPath)
+		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName, &d.DiskPath, &d.TimeCreated)
+		fmt.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName, d.DiskPath, d.TimeCreated)
 		if err != nil {
 			fmt.Println(err)
 		}
