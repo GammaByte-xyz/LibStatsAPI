@@ -622,7 +622,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 	}
 
-	domIP := setIP(t.Network, macAddr, domainName, qcow2Name)
+	domIP := setIP(t.Network, macAddr, domainName, qcow2Name, t.UserEmail, t.FullName, t.Username)
 	fmt.Fprintf(w, "  VPS IP: %s\n", domIP)
 
 }
@@ -640,16 +640,19 @@ type domainNetworks struct {
 }
 
 type dbValues struct {
-	DomainName  string
-	NetworkName string
-	MacAddress  string
-	IpAddress   string
-	DiskPath    string
-	TimeCreated string
+	DomainName   string
+	NetworkName  string
+	MacAddress   string
+	IpAddress    string
+	DiskPath     string
+	TimeCreated  string
+	UserEmail    string
+	UserFullName string
+	UserName     string
 }
 
 // Set the IP address of the VM based on the MAC
-func setIP(network string, macAddr string, domainName string, qcow2Name string) string {
+func setIP(network string, macAddr string, domainName string, qcow2Name string, userEmail string, userFullName string, userName string) string {
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
@@ -673,7 +676,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 	// executing
 	defer db.Close()
 
-	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text)`
+	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text)`
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -775,7 +778,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 		}
 
 	} else if exists == true {
-		setIP(network, macAddr, domainName, qcow2Name)
+		setIP(network, macAddr, domainName, qcow2Name, userEmail, userFullName, userName)
 	}
 
 	/*domNets := "/etc/gammabyte/lsapi/DomainNetworks.json"
@@ -819,7 +822,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string) 
 	// Get the current date/time
 	dt := time.Now()
 	// Generate the insert string
-	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address, disk_path, time_created) VALUES ('%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP, qcow2Name, dt.String())
+	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address, disk_path, time_created, user_email, user_full_name, username) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName)
 	sqlData := insertData
 	fmt.Printf(sqlData)
 
@@ -941,10 +944,10 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		//net, err := conn.LookupNetworkByName(network)
 
 		var d dbValues
-		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network, disk_path, time_created FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
+		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
 		fmt.Println(queryData)
-		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName, &d.DiskPath, &d.TimeCreated)
-		fmt.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName, d.DiskPath, d.TimeCreated)
+		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
+		fmt.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n User Email: %s\n User's Full Name: %s\n Username: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName, d.DiskPath, d.TimeCreated, d.UserEmail, d.UserFullName, d.UserName)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -986,7 +989,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		} else {
 			fmt.Fprintf(w, "Domain %s was undefined successfully.\n", t.VpsName)
 		}
-		fileName := fmt.Sprintf("/mnt/vmblocknew/%s", t.VpsName)
+		fileName := fmt.Sprintf(d.DiskPath)
 		e = os.Remove(d.DiskPath)
 		if e != nil {
 			fmt.Fprintf(w, "Domain disk (%s) has failed to purge.\n", fileName)
@@ -994,6 +997,12 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		} else {
 			fmt.Fprintf(w, "Domain disk (%s) was successfully wiped & purged.\n", fileName)
 		}
+		dbQuery := fmt.Sprintf("DELETE FROM domaininfo WHERE domain_name = '%s'", t.VpsName)
+		res, err := db.Exec(dbQuery)
+		if err != nil {
+			log.Fatalf("Failed to remove row from DB.", err, res)
+		}
+
 	} else if t.VpsName == "" {
 		fmt.Fprintf(w, "Please specify a domain with the JSON object: 'VpsName'\n")
 	}
