@@ -12,15 +12,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - uses: ktmud/cached-dependencies@master
 
     - name: Test Go build & then test the project
       uses: actions/setup-go@v2
       with:
         go-version: 1.16
+        
+    - name: Install dependencies for build
+      run: apt install -y libvirt libvirt-devel libvirt-bin
+        
+    - name: Install dependencies
+      run: go get -u golang.org/x/lint/golint
+      
+    - name: Lint
+      run: |
+         golint ./...
+         go vet ./...
+
 
     - name: Build
       run: go build -v ./...
 
     - name: Test
       run: go test -v ./...
+      
+
