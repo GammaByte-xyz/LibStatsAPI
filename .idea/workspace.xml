@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Added Logging Facility to stdout">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Added totals &amp; more variable types for printing all domains.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/main.go" afterDir="false" />
     </list>
@@ -87,7 +87,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Added VNC Device" />
     <MESSAGE value="Repaired VNC keymap" />
     <MESSAGE value="Fixed disk metadata bug" />
     <MESSAGE value="Added Go-Qemu module and replaced shell arguments with proper Qemu API" />
@@ -112,6 +111,7 @@
     <MESSAGE value="Added requirement for YAML config file to store secrets &amp; options" />
     <MESSAGE value="Configured removal of DB row upon removal of domain via API path" />
     <MESSAGE value="Added Logging Facility to stdout" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added Logging Facility to stdout" />
+    <MESSAGE value="Added totals &amp; more variable types for printing all domains." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added totals &amp; more variable types for printing all domains." />
   </component>
 </project>

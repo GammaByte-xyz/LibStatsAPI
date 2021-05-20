@@ -931,7 +931,8 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 	var d dbValues
 	var totalLsapiVMs int
 	for dbVars.Next() {
-		err := dbVars.Scan(&d.DomainName, &totalLsapiVMs)
+		err := dbVars.Scan(&d.DomainName)
+		totalLsapiVMs = totalLsapiVMs + 1
 		if err != nil {
 			l.Fatal(err)
 		}
