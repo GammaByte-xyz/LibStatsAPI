@@ -10,6 +10,7 @@ BuildRequires: gcc
 BuildRequires: golang
 BuildRequires: libvirt-devel
 BuildRequires: libvirt
+Source0: main.go
 
 %description
 LibStatsAPI is a Restful HTTP API for Libvirt
