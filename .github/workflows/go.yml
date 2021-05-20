@@ -19,7 +19,7 @@ jobs:
         go-version: 1.16
         
     - name: Install dependencies for build
-      run: apt install -y libvirt libvirt-devel libvirt-bin
+      run: sudo apt install -y libvirt libvirt-devel libvirt-bin
         
     - name: Install dependencies
       run: go get -u golang.org/x/lint/golint
