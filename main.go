@@ -154,12 +154,13 @@ const (
 )
 
 type configFile struct {
-	VolumePath    string `yaml:"volume_path"`
-	ListenPort    string `yaml:"listen_port"`
-	ListenAddress string `yaml:"listen_address"`
-	SqlPassword   string `yaml:"sql_password"`
-	Manufacturer  string `yaml:"vm_manufacturer"`
-	SqlUser       string `yaml:"sql_user"`
+	VolumePath      string `yaml:"volume_path"`
+	ListenPort      string `yaml:"listen_port"`
+	ListenAddress   string `yaml:"listen_address"`
+	SqlPassword     string `yaml:"sql_password"`
+	Manufacturer    string `yaml:"vm_manufacturer"`
+	SqlUser         string `yaml:"sql_user"`
+	DomainBandwidth int    `yaml:"domain_bandwidth"`
 }
 
 // Values parsed from JSON API input that can be used later
@@ -172,6 +173,7 @@ type createDomainStruct struct {
 	Network            string `json:"Network"`
 	VncPasswordEnabled bool   `json:"VncPasswordEnabled"`
 	VncPassword        string `json:"VncPassword"`
+	NetworkFilter      string `json:"NetworkFilter"`
 
 	// User Information
 	UserEmail string `json:"UserEmail"`
@@ -430,9 +432,8 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		TimeZone: "utc",
 	}
 
-	// Generate outbound peak in bytes
-	var outboundPeak = new(int)
-	*outboundPeak = 50000
+	// Generate outbound/inbound peak in kilobytes from megabits per second
+	var outboundPeak int = ConfigFile.DomainBandwidth * 1000
 
 	// Check input values for sanity (GammaByte.xyz Specific)
 
@@ -510,18 +511,18 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 					Type: "virtio",
 				},
 				FilterRef: &libvirtxml.DomainInterfaceFilterRef{
-					Filter: "no-localnet",
+					Filter: t.NetworkFilter,
 				},
 				Bandwidth: &libvirtxml.DomainInterfaceBandwidth{
 					Outbound: &libvirtxml.DomainInterfaceBandwidthParams{
-						Peak:    outboundPeak,
-						Average: outboundPeak,
-						Burst:   outboundPeak,
+						Peak:    &outboundPeak,
+						Average: &outboundPeak,
+						Burst:   &outboundPeak,
 					},
 					Inbound: &libvirtxml.DomainInterfaceBandwidthParams{
-						Peak:    outboundPeak,
-						Average: outboundPeak,
-						Burst:   outboundPeak,
+						Peak:    &outboundPeak,
+						Average: &outboundPeak,
+						Burst:   &outboundPeak,
 					},
 				},
 			},
@@ -821,44 +822,6 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 		setIP(network, macAddr, domainName, qcow2Name, userEmail, userFullName, userName)
 	}
 
-	/*domNets := "/etc/gammabyte/lsapi/DomainNetworks.json"
-	err = checkFile(domNets)
-	if err != nil {
-		l.Fatal(err)
-	}
-
-	file, err := ioutil.ReadFile(domNets)
-	if err != nil {
-		l.Fatal(err)
-	}
-
-	data := []domainNetworkDomainName{}
-
-	json.Unmarshal(file, &data)
-
-	ipStruct := &domainNetworkDomainName{
-		DomainName: domainName,
-		Details: domainNetworks{
-			NetworkName: network,
-			MacAddress:  macAddr,
-			IpAddress:   randIP,
-		},
-	}
-
-	data = append(data, *ipStruct)
-
-	// Prepare the new data to be marshalled & written to the config file
-	dataBytes, err := json.Marshal(data)
-	if err != nil {
-		l.Fatal(err)
-	}
-
-	err = ioutil.WriteFile(domNets, dataBytes, 0644)
-	if err != nil {
-		l.Fatal(err)
-	}
-	*/
-
 	// Get the current date/time
 	dt := time.Now()
 	// Generate the insert string
@@ -869,12 +832,24 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 
 	if err != nil {
 		panic(err.Error())
+		revertDiskArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertDiskArgs...)
+		l.Fatal("Failed.")
+		RevertDomainArgs := []string{"undefine", domainName}
+		exec.Command("virsh", RevertDomainArgs...)
+		return ""
 	}
 
 	lastId, err := res.LastInsertId()
 
 	if err != nil {
 		l.Fatal(err)
+		revertDiskArgs := []string{"-rf", qcow2Name}
+		exec.Command("rm", revertDiskArgs...)
+		l.Fatal("Failed.")
+		RevertDomainArgs := []string{"undefine", domainName}
+		exec.Command("virsh", RevertDomainArgs...)
+		return ""
 	}
 
 	l.Printf("MySQL ==> The last inserted row id: %d\n", lastId)
@@ -903,25 +878,71 @@ func checkFile(filename string) error {
 
 // Get the existing domains and print them
 func getDomains(w http.ResponseWriter, r *http.Request) {
+	// Read the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	// Parse the config file
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
 
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Fatalf("failed to connect to qemu")
+		l.Fatalf("failed to connect to qemu\n")
 	}
 	defer conn.Close()
 
 	doms, err := conn.ListAllDomains(libvirt.CONNECT_LIST_DOMAINS_ACTIVE)
 
+	l.Printf("All VMs:\n")
+	fmt.Fprintf(w, "All VMs:\n")
 	for _, dom := range doms {
 		name, err := dom.GetName()
 		if err == nil {
 			l.Printf("  %s\n", name)
-			fmt.Fprintf(w, "%s\n", name)
+			fmt.Fprintf(w, "  %s\n", name)
 		}
 		dom.Free()
 	}
 
-	l.Printf("%d\n", len(doms))
+	// Execute MySQL Query to get all managed VMs
+	query := `SELECT domain_name FROM domaininfo`
+	dbVars, err := db.Query(query)
+	if err != nil {
+		fmt.Fprint(w, "Could not get domains from MySQL.")
+		l.Fatalf("Could not get domains from MySQL.")
+	}
+
+	l.Printf("All LibStatsAPI Managed VMs:\n")
+	fmt.Fprintf(w, "All LibStatsAPI Managed VMs:\n")
+	var d dbValues
+	var totalLsapiVMs int
+	for dbVars.Next() {
+		err := dbVars.Scan(&d.DomainName, &totalLsapiVMs)
+		if err != nil {
+			l.Fatal(err)
+		}
+		fmt.Fprintf(w, "  %s\n", d.DomainName)
+		l.Printf("  %s\n", d.DomainName)
+	}
+
+	l.Printf("\nTotal VMs: %d\n", len(doms))
+	fmt.Fprintf(w, "\nTotal VMs: %d\n", len(doms))
+	l.Printf("Total LibStatsAPI Managed VMs: %d\n", totalLsapiVMs)
+	fmt.Fprintf(w, "total LibStatsAPI Managed VMs: %d\n", totalLsapiVMs)
 }
 
 // Delete domain based on values
@@ -930,7 +951,6 @@ type deleteDomainStruct struct {
 }
 
 func deleteDomain(w http.ResponseWriter, r *http.Request) {
-
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
@@ -970,25 +990,15 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	// Connect to Qemu-KVM/Libvirt
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Fatalf("failed to connect to qemu")
+		l.Fatalf("Failed to connect to qemu")
 	}
 	defer conn.Close()
 
 	// Check to see if the VPS name has been defined. If not, notify endpoint & exit.
 	if t.VpsName != "" {
+		l.Printf("\nGot request to remove domain: %s\n", t.VpsName)
 		domain, _ := conn.LookupDomainByName(t.VpsName)
 		fmt.Fprintf(w, "Domain to delete: %s\n", t.VpsName)
-
-		//netUpdateFlags0 := libvirt.NetworkUpdateFlags(0)
-		//netUpdateFlags2 := libvirt.NetworkUpdateFlags(2)
-
-		// Get domain network
-		//domConnect, _ := domain.DomainGetConnect()
-		//network, _ := domConnect.ListNetworks()
-
-		//fmt.Fprintf(w, "%s\n", network)
-
-		//net, err := conn.LookupNetworkByName(network)
 
 		var d dbValues
 		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
@@ -996,62 +1006,96 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
 		l.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n User Email: %s\n User's Full Name: %s\n Username: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName, d.DiskPath, d.TimeCreated, d.UserEmail, d.UserFullName, d.UserName)
 		if err != nil {
-			l.Println(err)
+			l.Fatalf(err.Error())
 		}
 
 		dhSection := libvirt.NetworkUpdateSection(4)
 
 		dhLeaseString := fmt.Sprintf("<host mac='%s'/>", d.MacAddress)
-		l.Printf("%s\n", dhLeaseString)
+		l.Printf("XML to query and delete from network %s: %s\n", d.NetworkName, dhLeaseString)
 
 		netUpdateFlags0 := libvirt.NetworkUpdateFlags(0)
 
 		// This one only updates the live state of the network, which is not what we want. We want persistent AND live updates
-		netUpdateFlags1 := libvirt.NetworkUpdateFlags(1)
+		// netUpdateFlags1 := libvirt.NetworkUpdateFlags(1)
 
 		netUpdateFlags2 := libvirt.NetworkUpdateFlags(2)
 
 		net, err := conn.LookupNetworkByName(d.NetworkName)
-		l.Println("Net: ", d.NetworkName)
+		if err != nil {
+			fmt.Fprintf(w, "Could not find network %s\n", d.NetworkName)
+			l.Fatalf("Could could find network %s\n", d.NetworkName)
+		} else {
+			fmt.Fprintf(w, "Successfully queried network %s\n", d.NetworkName)
+			l.Printf("Successfully queried network %s\n", d.NetworkName)
+		}
 
-		net.Update(libvirt.NETWORK_UPDATE_COMMAND_DELETE, dhSection, -1, string(dhLeaseString), netUpdateFlags0)
+		err = net.Update(libvirt.NETWORK_UPDATE_COMMAND_DELETE, dhSection, -1, string(dhLeaseString), netUpdateFlags0)
+		if err != nil {
+			l.Printf("Failed to update network. Error: \n%s\n", err)
+			fmt.Fprintf(w, "Failed to update network. Error: \n  %s\n", err)
+		} else {
+			l.Printf("Successfully updated the live state of network %s\n", d.NetworkName)
+			fmt.Fprintf(w, "Successfully updated the live state of network %s\n", d.NetworkName)
+		}
 
 		// This one only updates the live state of the network, which is not what we want. We want persistent AND live updates
-		net.Update(libvirt.NETWORK_UPDATE_COMMAND_ADD_LAST, dhSection, -1, string(dhLeaseString), netUpdateFlags1)
-
-		net.Update(libvirt.NETWORK_UPDATE_COMMAND_DELETE, dhSection, -1, string(dhLeaseString), netUpdateFlags2)
+		/* err = net.Update(libvirt.NETWORK_UPDATE_COMMAND_ADD_LAST, dhSection, -1, string(dhLeaseString), netUpdateFlags1)
 		if err != nil {
-			l.Fatalf("Failed to update network. Error: \n%s\n", err)
+			l.Printf("Failed to check live network. Error: \n%s\n", err)
+			fmt.Fprintf(w, "Failed to check live network. Error: \n  %s\n", err)
+		} else {
+			l.Printf("Successfully checked the update status on the live network.\n")
+			fmt.Fprintf(w, "Succesfully checked the update status on the live network.\n")
+		} */
+
+		err = net.Update(libvirt.NETWORK_UPDATE_COMMAND_DELETE, dhSection, -1, string(dhLeaseString), netUpdateFlags2)
+		if err != nil {
+			l.Printf("Failed to update network. Error: \n%s\n", err)
+			fmt.Fprintf(w, "Failed to update network. Error: \n  %s\n", err)
+		} else {
+			l.Printf("Successfully updated the persistent network.")
+			fmt.Fprintf(w, "Successfully updated the persistent network.")
 		}
 
 		e := domain.Destroy()
 		if e != nil {
-			fmt.Fprintf(w, "Error destroying domain: %s (Force shutdown)\n", t.VpsName)
+			fmt.Fprintf(w, "Error destroying domain: %s (Force Shutdown)\n", t.VpsName)
+			l.Printf("Error destroying domain: %s (Force Shutdown)\n", t.VpsName)
 		} else {
 			fmt.Fprintf(w, "Domain %s was forcefully shut down.\n", t.VpsName)
+			l.Printf("Domain %s was forcefully shut down.\n", t.VpsName)
 		}
 		e = domain.Undefine()
 		if e != nil {
 			fmt.Fprintf(w, "Error undefining the domain %s\n.", t.VpsName)
+			l.Printf("Error undefining the domain %s\n.", t.VpsName)
 		} else {
 			fmt.Fprintf(w, "Domain %s was undefined successfully.\n", t.VpsName)
+			l.Printf("Domain %s was undefined successfully.\n", t.VpsName)
 		}
 		fileName := fmt.Sprintf(d.DiskPath)
 		e = os.Remove(d.DiskPath)
 		if e != nil {
 			fmt.Fprintf(w, "Domain disk (%s) has failed to purge.\n", fileName)
+			l.Printf("Domain disk (%s) has failed to purge.\n", fileName)
 			l.Fatal(e)
 		} else {
 			fmt.Fprintf(w, "Domain disk (%s) was successfully wiped & purged.\n", fileName)
+			l.Printf("Domain disk (%s) was successfully wiped & purged.\n", fileName)
 		}
 		dbQuery := fmt.Sprintf("DELETE FROM domaininfo WHERE domain_name = '%s'", t.VpsName)
 		res, err := db.Exec(dbQuery)
 		if err != nil {
+			fmt.Fprintf(w, "Failed to remove row from DB.\n", err, res)
 			l.Fatalf("Failed to remove row from DB.", err, res)
+		} else {
+			fmt.Fprintf(w, "Successfully removed domain %s from MySQL database.\n", t.VpsName)
+			l.Printf("Successfully removed domain %s from MySQL database.\n", t.VpsName)
 		}
 
 	} else if t.VpsName == "" {
-		fmt.Fprintf(w, "Please specify a domain with the JSON object: 'VpsName'\n")
+		fmt.Fprintf(w, "Please specify a domain with the JSON parameter: 'VpsName'\n")
 	}
 
 }
