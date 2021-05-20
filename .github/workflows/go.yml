@@ -21,13 +21,13 @@ jobs:
     - name: Install dependencies for build
       run: sudo apt-get install -y libvirt-dev
         
-    - name: Install dependencies
-      run: go get -u golang.org/x/lint/golint
+    #- name: Install dependencies
+    #  run: go get -u golang.org/x/lint/golint
       
-    - name: Lint
-      run: |
-         golint ./...
-         go vet ./...
+   # - name: Lint
+   #   run: |
+   #      golint ./...
+   #      go vet ./...
 
 
     - name: Build
