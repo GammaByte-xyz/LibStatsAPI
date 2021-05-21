@@ -1,4 +1,4 @@
-module gammabyte.xyz/libstatsapi
+module libstatsapi
 
 go 1.16
 

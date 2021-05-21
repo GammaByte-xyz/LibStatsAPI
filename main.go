@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -36,6 +37,7 @@ func handleRequests() {
 	http.HandleFunc("/api/kvm/ram-usage", getRamUsage)
 	http.HandleFunc("/api/kvm/create/domain", createDomain)
 	http.HandleFunc("/api/kvm/delete/domain", deleteDomain)
+	http.HandleFunc("/api/vnc/proxy/create", vncProxy)
 
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -96,6 +98,71 @@ func main() {
 	}
 
 	handleRequests()
+}
+
+func vncProxy(w http.ResponseWriter, r *http.Request) {
+	decoder := json.NewDecoder(r.Body)
+	var t *vncProxyValues = &vncProxyValues{}
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	// Decode the struct internally
+	err := decoder.Decode(&t)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+
+	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
+	if err != nil {
+		l.Println(err)
+	}
+	defer conn.Close()
+
+	vps, _ := conn.LookupDomainByName(t.VpsName)
+
+	xmlData, _ := vps.GetXMLDesc(0)
+	v := ParseDomainXML(xmlData)
+
+	var vncPort string
+	if v.Devices.Graphics.VNCPort == "-1" {
+		l.Printf("Could not get VNC port for domain %s!\n", t.VpsName)
+	}
+
+	vncPort = v.Devices.Graphics.VNCPort
+
+	vncToken := GenerateSecureToken(24)
+
+	vncAppend := fmt.Sprintf("%s: localhost:%s\n", vncToken, vncPort)
+
+	f, err := os.OpenFile("/etc/gammabyte/lsapi/vnc/vnc.conf",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+
+	if err != nil {
+		l.Println(err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(vncAppend); err != nil {
+		l.Println(err)
+	}
+
+	l.Printf("Domain: %s\n", t.VpsName)
+	l.Printf("VNC Port: %s\n", vncPort)
+
+	URL := fmt.Sprintf("{\"VncURL\": \"https://vnc.gammabyte.xyz/vnc.html?host=vnc.gammabyte.xyz&port=443&path=websockify?token=%s\"}\n", vncToken)
+	l.Println(URL)
+	fmt.Fprintf(w, URL)
+
+}
+
+func GenerateSecureToken(length int) string {
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(b)
 }
 
 // Generate a MAC address to use for the VPS
@@ -184,6 +251,11 @@ type createDomainStruct struct {
 
 	// Misc. Data
 	CreationDate string `json:"CreationDate"`
+}
+
+type vncProxyValues struct {
+	UserToken string `json:"UserToken"`
+	VpsName   string `json:"VpsName"`
 }
 
 // Generate a random integer for the VPS ID
@@ -1101,4 +1173,41 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Please specify a domain with the JSON parameter: 'VpsName'\n")
 	}
 
+}
+
+type VNCinfo struct {
+	VNCPort string `xml:"port,attr"`
+}
+
+type MACAttr struct {
+	Address string `xml:"address,attr"`
+}
+type BridgeInterface struct {
+	MAC  MACAttr `xml:"mac"`
+	Type string  `xml:"type,attr"`
+}
+
+type DiskSource struct {
+	Path string `xml:"file,attr"`
+}
+type Disk struct {
+	Source DiskSource `xml:"source"`
+}
+
+type Devices struct {
+	Graphics  VNCinfo           `xml:"graphics"`
+	Interface []BridgeInterface `xml:"interface""`
+	Disks     []Disk            `xml:"disk"`
+}
+
+type xmlParseResult struct {
+	Name    string  `xml:"name"`
+	UUID    string  `xml:"uuid"`
+	Devices Devices `xml:"devices"`
+}
+
+func ParseDomainXML(xmlData string) *xmlParseResult {
+	var v = xmlParseResult{}
+	xml.Unmarshal([]byte(xmlData), &v)
+	return &v
 }
