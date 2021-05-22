@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	uuid "github.com/google/uuid"
 	"github.com/libvirt/libvirt-go"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v2"
@@ -38,6 +39,7 @@ func handleRequests() {
 	http.HandleFunc("/api/kvm/create/domain", createDomain)
 	http.HandleFunc("/api/kvm/delete/domain", deleteDomain)
 	http.HandleFunc("/api/vnc/proxy/create", vncProxy)
+	http.HandleFunc("/api/auth/user/create", createUser)
 
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -81,8 +83,54 @@ func main() {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword)
 	db, err := sql.Open("mysql", dbConnectString)
+
+	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
+
+	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err := db.ExecContext(ctx, createDB)
+	if err != nil {
+		l.Fatalf("Error %s when creating lsapi DB\n", err)
+	}
+
+	db.Close()
+
+	dbConnectString = fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err = sql.Open("mysql", dbConnectString)
+
+	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
+
+	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err = db.ExecContext(ctx, query)
+	if err != nil {
+		l.Fatalf("Error %s when creating users table\n", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		l.Fatalf("Error %s when getting rows affected\n", err)
+	}
+	l.Printf("Rows affected when creating table: %d\n", rows)
+
+	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+
+	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err = db.ExecContext(ctx, query)
+	if err != nil {
+		l.Fatalf("Error %s when creating domaininfo table\n", err)
+	}
+
+	rows, err = res.RowsAffected()
+	if err != nil {
+		l.Fatalf("Error %s when getting rows affected\n", err)
+	}
+	l.Printf("Rows affected when creating table: %d\n", rows)
 
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
@@ -114,47 +162,232 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO Check to see if the user owns the VPS or not
+	ownsVps := verifyOwnership(t.UserToken, t.VpsName, t.Email)
+
+	if ownsVps == false {
+		return
+	}
+
+	// Connect to libvirt
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		l.Println(err)
 	}
 	defer conn.Close()
 
+	// Find the VPS by name provided by the frontend UI
 	vps, _ := conn.LookupDomainByName(t.VpsName)
 
+	// Get the XML data of the VPS, then parse it
 	xmlData, _ := vps.GetXMLDesc(0)
 	v := ParseDomainXML(xmlData)
 
+	// Check to see if the VNC port is -1. If it is, we can't connect.
 	var vncPort string
 	if v.Devices.Graphics.VNCPort == "-1" {
 		l.Printf("Could not get VNC port for domain %s!\n", t.VpsName)
 	}
 
+	// Define the VNC port from the domain XML
 	vncPort = v.Devices.Graphics.VNCPort
 
+	// Generate a one-time, secure 24 character token
 	vncToken := GenerateSecureToken(24)
 
+	// Generate the string that will be appended to /etc/gammabyte/lsapi/vnc.conf
 	vncAppend := fmt.Sprintf("%s: localhost:%s\n", vncToken, vncPort)
 
+	// Open the config file
 	f, err := os.OpenFile("/etc/gammabyte/lsapi/vnc/vnc.conf",
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-
 	if err != nil {
 		l.Println(err)
 	}
 	defer f.Close()
 
+	// Append the string we generated earlier to the config file
 	if _, err := f.WriteString(vncAppend); err != nil {
 		l.Println(err)
 	}
 
+	// Print the data to the log
 	l.Printf("Domain: %s\n", t.VpsName)
 	l.Printf("VNC Port: %s\n", vncPort)
 
+	// Removes old VNC tokens after 3 hour expiration period
+	configPath := "/etc/gammabyte/lsapi/vnc/vnc.conf"
+	time.AfterFunc(25*time.Second, func() { purgeOldConfig(vncToken, configPath, t.VpsName) })
+
+	// Generate a URL that specifies the token & proper host:port combination, then send it to the API request endpoint as a JSON string
 	URL := fmt.Sprintf("{\"VncURL\": \"https://vnc.gammabyte.xyz/vnc.html?host=vnc.gammabyte.xyz&port=443&path=websockify?token=%s\"}\n", vncToken)
 	l.Println(URL)
 	fmt.Fprintf(w, URL)
+}
 
+func purgeOldConfig(vncToken string, configPath string, vpsName string) {
+	// Open the config file
+	removeArgs := fmt.Sprintf("sed -i '/%s/d %s", vncToken, configPath)
+	exec.Command(removeArgs)
+	l.Printf("Removed VNC token created 3 hours ago for VPS %s at %s", vpsName, time.Now())
+}
+
+// Verifies the ownership of a user to a VPS
+func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		panic(err.Error())
+	}
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	// Execute the query checking for the user binding to the VPS
+	checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)
+	checkOwnership := db.QueryRow(checkQuery)
+
+	var ownsVps bool
+
+	switch err := checkOwnership.Scan(&vpsName); err {
+	case sql.ErrNoRows:
+		ownsVps = false
+		return ownsVps
+	case nil:
+		ownsVps = true
+	default:
+		panic(err)
+	}
+
+	l.Printf("Owns VPS: %t", ownsVps)
+
+	if ownsVps == false {
+		l.Printf("Unauthorized access to %s requested!", vpsName)
+	}
+
+	/*if checkOwnership.Next(); bool(ownsVps) {
+		ownsVps = false
+		l.Printf("Owns VPS: %t", ownsVps)
+		return ownsVps
+	} else {
+		l.Printf("Unauthorized access to %s requested!", vpsName)
+		fmt.Println(checkOwnership.Next())
+		ownsVps = true
+		l.Printf("Owns VPS: %t", ownsVps)
+		return ownsVps
+	}*/
+	return ownsVps
+}
+
+type userCreateStruct struct {
+	FullName string `json:"FullName"`
+	Email    string `json:"Email"`
+	Password string `json:"Password"`
+	UserName string `json:"UserName"`
+}
+
+func createUser(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Decode JSON & assign the json value struct to a variable we can use here
+	decoder := json.NewDecoder(r.Body)
+	var user *userCreateStruct = &userCreateStruct{}
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	// Decode the struct internally
+	err = decoder.Decode(&user)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		panic(err.Error())
+	}
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	checkQueryEmail := fmt.Sprintf(`SELECT email_address FROM users WHERE email_address='%s'`, user.Email)
+	checkQueryUserName := fmt.Sprintf(`SELECT username FROM users WHERE username='%s'`, user.UserName)
+	// Check if user exists already
+	checkEmailExists, err := db.Query(checkQueryEmail)
+	if checkEmailExists.Next() {
+		fmt.Fprintf(w, `{"EmailExists": "true"}`)
+		l.Printf("Email %s already exists!", user.Email)
+		return
+	}
+
+	checkUserNameExists, err := db.Query(checkQueryUserName)
+	if checkUserNameExists.Next() {
+		fmt.Fprintf(w, `{"UserExists": "true"}`)
+		l.Printf("User %s already exists!", user.UserName)
+		return
+	}
+
+	// Create the users table if it doesn't exist, also add the columns
+	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
+
+	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err := db.ExecContext(ctx, query)
+	if err != nil {
+		l.Fatalf("Error %s when creating users table\n", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		l.Fatalf("Error %s when getting rows affected\n", err)
+	}
+	l.Printf("Rows affected when creating table: %d\n", rows)
+
+	// Generate arbitrary user binding data
+	joinDate := time.Now()
+	uuidValue, err := uuid.NewUUID()
+	if err != nil {
+		l.Fatalf("Error %s when generating UUID\n", err)
+	}
+	token := GenerateSecureToken(24)
+
+	// Gather information from JSON input to generate user data, then put it in MariaDB.
+	insertQuery := fmt.Sprintf("INSERT INTO users (username, full_name, user_token, email_address, join_date, uuid, password) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', SHA('%s'));", user.UserName, user.FullName, token, user.Email, joinDate.String(), uuidValue.String(), user.Password)
+
+	res, err = db.ExecContext(ctx, insertQuery)
+	if err != nil {
+		l.Fatalf("Error %s when inserting user info\n", err)
+	}
+
+	rows, err = res.RowsAffected()
+	if err != nil {
+		l.Fatalf("Error %s when getting rows affected\n", err)
+	}
+	l.Printf("Rows affected when creating table: %d\n", rows)
+
+	returnJson := fmt.Sprintf(`{"Token": "%s", "JoinDate": "%s", "UUID": "%s"}`, token, joinDate, uuidValue)
+	fmt.Fprintf(w, "%s\n", returnJson)
 }
 
 func GenerateSecureToken(length int) string {
@@ -248,6 +481,7 @@ type createDomainStruct struct {
 	FullName  string `json:"FullName"`
 	UserRole  string `json:"UserRole"`
 	Username  string `json:"Username"`
+	UserToken string `json:"Token"`
 
 	// Misc. Data
 	CreationDate string `json:"CreationDate"`
@@ -256,6 +490,7 @@ type createDomainStruct struct {
 type vncProxyValues struct {
 	UserToken string `json:"UserToken"`
 	VpsName   string `json:"VpsName"`
+	Email     string `json:"Email"`
 }
 
 // Generate a random integer for the VPS ID
@@ -737,7 +972,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 	}
 
-	domIP := setIP(t.Network, macAddr, domainName, qcow2Name, t.UserEmail, t.FullName, t.Username)
+	domIP := setIP(t.Network, macAddr, domainName, qcow2Name, t.UserEmail, t.FullName, t.Username, t.UserToken)
 	fmt.Fprintf(w, "  VPS IP: %s\n", domIP)
 
 }
@@ -767,7 +1002,7 @@ type dbValues struct {
 }
 
 // Set the IP address of the VM based on the MAC
-func setIP(network string, macAddr string, domainName string, qcow2Name string, userEmail string, userFullName string, userName string) string {
+func setIP(network string, macAddr string, domainName string, qcow2Name string, userEmail string, userFullName string, userName string, userToken string) string {
 
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -792,7 +1027,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 	// executing
 	defer db.Close()
 
-	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text)`
+	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -893,13 +1128,13 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 		}
 
 	} else if exists == true {
-		setIP(network, macAddr, domainName, qcow2Name, userEmail, userFullName, userName)
+		setIP(network, macAddr, domainName, qcow2Name, userEmail, userFullName, userName, userToken)
 	}
 
 	// Get the current date/time
 	dt := time.Now()
 	// Generate the insert string
-	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address, disk_path, time_created, user_email, user_full_name, username) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName)
+	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address, disk_path, time_created, user_email, user_full_name, username, user_token) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName, userToken)
 	l.Printf("MySQL ==> %s\n\n", insertData)
 
 	res, err = db.Exec(insertData)

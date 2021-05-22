@@ -4,16 +4,20 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Changed some math">
-      <change afterPath="$PROJECT_DIR$/.idea/webResources.xml" afterDir="false" />
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Implemented a function that returns a usable VNC URL based on the JSON input of the VM specified">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="DatabaseLocalColorSettings">
+    <colors>
+      <entry key="c7c2ad06-d16c-4f49-8299-64fdcb7daddd" value="Green" />
+    </colors>
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -47,10 +51,10 @@
   <component name="PropertiesComponent">
     <property name="ASKED_ADD_EXTERNAL_FILES" value="true" />
     <property name="ASKED_SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
+    <property name="DatabaseDriversLRU" value="redshift&#10;mariadb" />
     <property name="DefaultGoTemplateProperty" value="Go File" />
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
-    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="configurable..is.expanded" value="true" />
     <property name="configurable.GoLibrariesConfigurable.is.expanded" value="true" />
@@ -62,7 +66,7 @@
     <property name="node.js.detected.package.tslint" value="true" />
     <property name="node.js.selected.package.eslint" value="(autodetect)" />
     <property name="node.js.selected.package.tslint" value="(autodetect)" />
-    <property name="settings.editor.selected.configurable" value="preferences.sourceCode.Go" />
+    <property name="settings.editor.selected.configurable" value="database.main" />
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
@@ -98,7 +102,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Fixed disk metadata bug" />
     <MESSAGE value="Added Go-Qemu module and replaced shell arguments with proper Qemu API" />
     <MESSAGE value="Added permissions args to created image" />
     <MESSAGE value="Changed t.DiskSize math to get GB out of a two digit integer" />
@@ -123,6 +126,7 @@
     <MESSAGE value="Added Logging Facility to stdout" />
     <MESSAGE value="Added totals &amp; more variable types for printing all domains." />
     <MESSAGE value="Changed some math" />
-    <option name="LAST_COMMIT_MESSAGE" value="Changed some math" />
+    <MESSAGE value="Implemented a function that returns a usable VNC URL based on the JSON input of the VM specified" />
+    <option name="LAST_COMMIT_MESSAGE" value="Implemented a function that returns a usable VNC URL based on the JSON input of the VM specified" />
   </component>
 </project>
