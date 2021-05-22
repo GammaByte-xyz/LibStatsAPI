@@ -10,7 +10,7 @@ import (
 	uuid "github.com/google/uuid"
 	"github.com/libvirt/libvirt-go"
 	"golang.org/x/net/context"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 	"io/ioutil"
 	"libvirt.org/libvirt-go-xml"
 	"log"
@@ -312,12 +312,21 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	// Set the maximum bytes able to be consumed by the API to prevent denial of service
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
 	// Decode the struct internally
 	err = decoder.Decode(&user)
 	if err != nil {
 		l.Println(err.Error())
 		return
 	}
+
+	l.Printf("%s\n%s\n%s\n%s\n", user.UserName, user.FullName, user.Email, user.Password)
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
@@ -335,14 +344,14 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	// Check if user exists already
 	checkEmailExists, err := db.Query(checkQueryEmail)
 	if checkEmailExists.Next() {
-		fmt.Fprintf(w, `{"EmailExists": "true"}`)
+		fmt.Fprintf(w, `{"UserExists": "true"}`)
 		l.Printf("Email %s already exists!", user.Email)
 		return
 	}
 
 	checkUserNameExists, err := db.Query(checkQueryUserName)
 	if checkUserNameExists.Next() {
-		fmt.Fprintf(w, `{"UserExists": "true"}`)
+		fmt.Fprintf(w, `{"UserExists": "true"}\n`)
 		l.Printf("User %s already exists!", user.UserName)
 		return
 	}
@@ -1431,7 +1440,7 @@ type Disk struct {
 
 type Devices struct {
 	Graphics  VNCinfo           `xml:"graphics"`
-	Interface []BridgeInterface `xml:"interface""`
+	Interface []BridgeInterface `xml:"interface"`
 	Disks     []Disk            `xml:"disk"`
 }
 
