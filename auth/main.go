@@ -70,7 +70,7 @@ func main() {
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
 
-	res, err := db.ExecContext(ctx, createDB)
+	res, err := db.Exec(createDB)
 	if err != nil {
 		l.Fatalf("Error %s when creating lsapi DB\n", err)
 	}
