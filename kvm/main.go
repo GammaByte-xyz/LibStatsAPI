@@ -132,11 +132,6 @@ func main() {
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
-	if err != nil {
-		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
-		panic(err)
-	}
-
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
@@ -173,6 +168,7 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		l.Println(err)
+		return
 	}
 	defer conn.Close()
 
@@ -203,12 +199,14 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		l.Println(err)
+		return
 	}
 	defer f.Close()
 
 	// Append the string we generated earlier to the config file
 	if _, err := f.WriteString(vncAppend); err != nil {
 		l.Println(err)
+		return
 	}
 
 	// Print the data to the log
@@ -217,18 +215,17 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 
 	// Removes old VNC tokens after 3 hour expiration period
 	configPath := "/etc/gammabyte/lsapi/vnc/vnc.conf"
-	time.AfterFunc(25*time.Second, func() { purgeOldConfig(vncToken, configPath, t.VpsName) })
+	time.AfterFunc(3*time.Hour, func() { purgeOldConfig(vncToken, configPath, t.VpsName) })
 
 	// Generate a URL that specifies the token & proper host:port combination, then send it to the API request endpoint as a JSON string
 	URL := fmt.Sprintf("{\"VncURL\": \"https://vnc.gammabyte.xyz/vnc.html?host=vnc.gammabyte.xyz&port=443&path=websockify?token=%s\"}\n", vncToken)
-	l.Println(URL)
+	l.Printf("%s\n", URL)
 	fmt.Fprintf(w, URL)
 }
 
 func purgeOldConfig(vncToken string, configPath string, vpsName string) {
 	// Open the config file
-	removeArgs := fmt.Sprintf("sed -i '/%s/d %s", vncToken, configPath)
-	exec.Command(removeArgs)
+	exec.Command("sed", "-i", "'/"+vncToken+"/d'", configPath)
 	l.Printf("Removed VNC token created 3 hours ago for VPS %s at %s", vpsName, time.Now())
 }
 
@@ -245,7 +242,8 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
-		panic(err.Error())
+		l.Println(err)
+		return false
 	}
 	// defer the close till after the main function has finished
 	// executing
@@ -264,7 +262,7 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	case nil:
 		ownsVps = true
 	default:
-		panic(err)
+		l.Println(err)
 	}
 
 	l.Printf("Owns VPS: %t", ownsVps)
@@ -515,7 +513,8 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		l.Println(err)
+		return
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -532,9 +531,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		l.Println(err.Error())
 		return
-	}
-
-	if err == nil {
+	} else {
 		fmt.Fprintf(w, "\n  [1/6] Request received! Provisioning VM...\n")
 		fmt.Fprintf(w, "  ------------------------------------------\n")
 	}
@@ -610,8 +607,6 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  [2.5/6] Error, changing permissions of VPS disk failed. The error is printed below.\n")
 		fmt.Fprintf(w, "%s", cmd)
 		os.Remove(qcow2Name)
-
-		l.Fatal("Failed.")
 		return
 	}
 
@@ -898,44 +893,38 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.\n")
 		fmt.Fprintf(w, "Err --> %s\n", err)
 		os.Remove(qcow2Name)
-
-		l.Fatal("Failed.\n")
 		return
 	}
 
 	// Connect to qemu-kvm
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Fatalf("Failed! \nReason: %s\n", err)
-		l.Fatalf("Failed to connect to qemu.n\n")
+		l.Printf("Failed! \nReason: %s\n", err)
+		l.Printf("Failed to connect to qemu.n\n")
 		os.Remove(qcow2Name)
 		os.Remove(qcow2Name)
 
-		l.Fatal("Failed.")
 		return
+	} else {
+		fmt.Fprintf(w, "  [2/6] Successfully connected to QEMU-KVM!\n")
+
 	}
 	defer conn.Close()
-
-	if err == nil {
-		fmt.Fprintf(w, "  [2/6] Successfully connected to QEMU-KVM!\n")
-	}
 
 	// Finally, define the VPS
 	dom, err := conn.DomainDefineXML(xmldoc)
 
 	if err != nil {
-		fmt.Fprintf(w, "Failed to define new domain from XML. Exiting.\n")
-		fmt.Fprintf(w, "Err --> %s\n", err)
-		fmt.Fprintf(w, "VPS MAC Address: %s\n", macAddr)
+		l.Printf("Failed to define new domain from XML. Exiting.\n")
+		l.Printf("Err --> %s\n", err)
+		l.Printf("VPS MAC Address: %s\n", macAddr)
 		os.Remove(qcow2Name)
 
-		l.Fatal("Failed.\n")
 		l.Println(dom)
 		return
-	}
-
-	if err == nil {
+	} else {
 		fmt.Fprintf(w, "  [5/6] Successfully defined new VPS!\n")
+
 	}
 
 	// Configure the VPS to automatically start when the host boots
@@ -945,12 +934,10 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		l.Println(err.Error())
 		l.Println(cmd)
-		fmt.Fprintf(w, "  [6/6] Error, autostart configuration setup of VPS failed. The error is printed below.\n")
-		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
-		fmt.Fprintf(w, "%s", cmd)
+		l.Printf("  [6/6] Error, autostart configuration setup of VPS failed. The error is printed below.\n")
+		l.Printf("  VPS MAC Address: %s\n", macAddr)
+		l.Printf("%s", cmd)
 		os.Remove(qcow2Name)
-
-		l.Fatal("Failed.")
 		return
 	}
 	if err == nil {
@@ -964,12 +951,11 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		l.Println(err.Error())
 		l.Println(cmd)
-		fmt.Fprintf(w, "  [6/6] Error, starting VPS failed. The error is printed below.\n")
-		fmt.Fprintf(w, "%s\n", cmd)
-		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
+		l.Printf("  [6/6] Error, starting VPS failed. The error is printed below.\n")
+		l.Printf("%s\n", cmd)
+		l.Printf("  VPS MAC Address: %s\n", macAddr)
 		revertDiskArgs := []string{"-rf", qcow2Name}
 		exec.Command("rm", revertDiskArgs...)
-		l.Fatal("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
 		return
@@ -982,6 +968,10 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	domIP := setIP(t.Network, macAddr, domainName, qcow2Name, t.UserEmail, t.FullName, t.Username, t.UserToken)
+	if domIP == "" {
+		l.Println("Could not assign local IP to VM")
+		return
+	}
 	fmt.Fprintf(w, "  VPS IP: %s\n", domIP)
 
 }
@@ -1018,7 +1008,8 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		l.Println(err)
+		return ""
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -1029,7 +1020,8 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 
 	// if there is an error opening the connection, handle it
 	if err != nil {
-		panic(err.Error())
+		l.Println(err)
+		return ""
 	}
 
 	// defer the close till after the main function has finished
@@ -1043,22 +1035,24 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 
 	res, err := db.ExecContext(ctx, query)
 	if err != nil {
-		l.Fatalf("Error %s when creating domaininfo table\n", err)
+		l.Printf("Error %s when creating domaininfo table\n", err)
+		return ""
 	}
 
 	rows, err := res.RowsAffected()
 	if err != nil {
-		l.Fatalf("Error %s when getting rows affected\n", err)
+		l.Printf("Error %s when getting rows affected\n", err)
+		return ""
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
 	// Connect to Qemu
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Fatalf("Failed to connect to qemu")
+		l.Printf("Failed to connect to qemu")
 		revertDiskArgs := []string{"-rf", qcow2Name}
 		exec.Command("rm", revertDiskArgs...)
-		l.Fatal("Failed.")
+		l.Println("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
 		return ""
@@ -1071,7 +1065,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 		l.Printf("Error: Could not find network: %s\n%s\n", network, err)
 		revertDiskArgs := []string{"-rf", qcow2Name}
 		exec.Command("rm", revertDiskArgs...)
-		l.Fatal("Failed.")
+		l.Println("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
 		return ""
@@ -1081,7 +1075,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 		l.Printf("Error: Could not get leases: %s\n", err)
 		revertDiskArgs := []string{"-rf", qcow2Name}
 		exec.Command("rm", revertDiskArgs...)
-		l.Fatal("Failed.")
+		l.Println("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
 		return ""
@@ -1127,10 +1121,10 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 
 		net.Update(libvirt.NETWORK_UPDATE_COMMAND_ADD_LAST, dhSection, -1, string(dhLeaseString), netUpdateFlags2)
 		if err != nil {
-			l.Fatalf("Failed to update network. Error: \n%s\n", err)
+			l.Printf("Failed to update network. Error: \n%s\n", err)
 			revertDiskArgs := []string{"-rf", qcow2Name}
 			exec.Command("rm", revertDiskArgs...)
-			l.Fatal("Failed.")
+			l.Println("Failed.")
 			RevertDomainArgs := []string{"undefine", domainName}
 			exec.Command("virsh", RevertDomainArgs...)
 			return ""
@@ -1149,10 +1143,10 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 	res, err = db.Exec(insertData)
 
 	if err != nil {
-		panic(err.Error())
+		l.Println(err)
 		revertDiskArgs := []string{"-rf", qcow2Name}
 		exec.Command("rm", revertDiskArgs...)
-		l.Fatal("Failed.")
+		l.Println("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
 		return ""
@@ -1161,10 +1155,10 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 	lastId, err := res.LastInsertId()
 
 	if err != nil {
-		l.Fatal(err)
+		l.Println(err)
 		revertDiskArgs := []string{"-rf", qcow2Name}
 		exec.Command("rm", revertDiskArgs...)
-		l.Fatal("Failed.")
+		l.Println("Failed.")
 		RevertDomainArgs := []string{"undefine", domainName}
 		exec.Command("virsh", RevertDomainArgs...)
 		return ""
@@ -1210,7 +1204,8 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 
 	// if there is an error opening the connection, handle it
 	if err != nil {
-		panic(err.Error())
+		l.Println(err)
+		return
 	}
 
 	// defer the close till after the main function has finished
@@ -1219,7 +1214,8 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Fatalf("failed to connect to qemu\n")
+		l.Println("failed to connect to qemu\n")
+		return
 	}
 	defer conn.Close()
 
@@ -1240,8 +1236,7 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 	query := `SELECT domain_name FROM domaininfo`
 	dbVars, err := db.Query(query)
 	if err != nil {
-		fmt.Fprint(w, "Could not get domains from MySQL.\n")
-		l.Fatalf("Could not get domains from MySQL.\n")
+		l.Println("Could not get domains from MySQL.")
 	}
 
 	l.Printf("All LibStatsAPI Managed VMs:\n")
@@ -1252,7 +1247,7 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 		err := dbVars.Scan(&d.DomainName)
 		totalLsapiVMs = totalLsapiVMs + 1
 		if err != nil {
-			l.Fatal(err)
+			l.Println(err)
 		}
 		fmt.Fprintf(w, "  %s\n", d.DomainName)
 		l.Printf("  %s\n", d.DomainName)
@@ -1275,7 +1270,8 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		l.Println(err)
+		return
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -1286,7 +1282,8 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 
 	// if there is an error opening the connection, handle it
 	if err != nil {
-		panic(err.Error())
+		l.Println(err)
+		return
 	}
 
 	// defer the close till after the main function has finished
@@ -1309,7 +1306,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	// Connect to Qemu-KVM/Libvirt
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Fatalf("Failed to connect to qemu")
+		l.Println("Failed to connect to qemu")
 	}
 	defer conn.Close()
 
@@ -1325,7 +1322,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
 		l.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n User Email: %s\n User's Full Name: %s\n Username: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName, d.DiskPath, d.TimeCreated, d.UserEmail, d.UserFullName, d.UserName)
 		if err != nil {
-			l.Fatalf(err.Error())
+			l.Println(err.Error())
 		}
 
 		dhSection := libvirt.NetworkUpdateSection(4)
@@ -1343,7 +1340,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		net, err := conn.LookupNetworkByName(d.NetworkName)
 		if err != nil {
 			fmt.Fprintf(w, "Could not find network %s\n", d.NetworkName)
-			l.Fatalf("Could could find network %s\n", d.NetworkName)
+			l.Printf("Could could find network %s\n", d.NetworkName)
 		} else {
 			fmt.Fprintf(w, "Successfully queried network %s\n", d.NetworkName)
 			l.Printf("Successfully queried network %s\n", d.NetworkName)
@@ -1398,7 +1395,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			fmt.Fprintf(w, "Domain disk (%s) has failed to purge.\n", fileName)
 			l.Printf("Domain disk (%s) has failed to purge.\n", fileName)
-			l.Fatal(e)
+			l.Println(e)
 		} else {
 			fmt.Fprintf(w, "Domain disk (%s) was successfully wiped & purged.\n", fileName)
 			l.Printf("Domain disk (%s) was successfully wiped & purged.\n", fileName)
