@@ -4,15 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Implemented User creation, NoVNC instance provisioning, &amp; security checks">
-      <change afterPath="$PROJECT_DIR$/kvm/main.go" afterDir="false" />
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Changed directory structure">
       <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/getStats.sh" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/getStats.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/go.sum" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/main.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/setup" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/setup" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/auth/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -111,7 +106,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Added permissions args to created image" />
     <MESSAGE value="Changed t.DiskSize math to get GB out of a two digit integer" />
     <MESSAGE value="Fixed math and addded debug print statement" />
     <MESSAGE value="Reverted back to old methods" />
@@ -136,6 +130,7 @@
     <MESSAGE value="Changed some math" />
     <MESSAGE value="Implemented a function that returns a usable VNC URL based on the JSON input of the VM specified" />
     <MESSAGE value="Implemented User creation, NoVNC instance provisioning, &amp; security checks" />
-    <option name="LAST_COMMIT_MESSAGE" value="Implemented User creation, NoVNC instance provisioning, &amp; security checks" />
+    <MESSAGE value="Changed directory structure" />
+    <option name="LAST_COMMIT_MESSAGE" value="Changed directory structure" />
   </component>
 </project>

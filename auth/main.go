@@ -17,6 +17,124 @@ import (
 	"time"
 )
 
+func handleRequests() {
+	http.HandleFunc("/api/auth/user/create", createUser)
+
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
+
+	// Listen on specified port
+	l.Fatal(http.ListenAndServe(listenAddr, nil))
+}
+
+// This is 1 GiB (gibibyte) in bytes
+const (
+	GiB = 1073741824 // 1 GiB = 2^30 bytes
+)
+
+// Main function that always runs first
+func main() {
+
+	// Check to see if config file exists
+	if fileExists("/etc/gammabyte/lsapi/config.yml") {
+		l.Println("Config file found.")
+	} else {
+		l.Println("Config file '/etc/gammabyte/lsapi/config.yml' not found!")
+	}
+
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+
+	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
+
+	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err := db.ExecContext(ctx, createDB)
+	if err != nil {
+		l.Fatalf("Error %s when creating lsapi DB\n", err)
+	}
+
+	db.Close()
+
+	dbConnectString = fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err = sql.Open("mysql", dbConnectString)
+
+	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
+
+	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err = db.ExecContext(ctx, query)
+	if err != nil {
+		l.Fatalf("Error %s when creating users table\n", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		l.Fatalf("Error %s when getting rows affected\n", err)
+	}
+	l.Printf("Rows affected when creating table: %d\n", rows)
+
+	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+
+	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err = db.ExecContext(ctx, query)
+	if err != nil {
+		l.Fatalf("Error %s when creating domaininfo table\n", err)
+	}
+
+	rows, err = res.RowsAffected()
+	if err != nil {
+		l.Fatalf("Error %s when getting rows affected\n", err)
+	}
+	l.Printf("Rows affected when creating table: %d\n", rows)
+
+	if err != nil {
+		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
+		panic(err)
+	}
+
+	err = db.Ping()
+	if err != nil {
+		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
+		panic(err)
+	} else {
+		l.Printf("Successfully connected to MySQL DB.\n")
+	}
+
+	handleRequests()
+}
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
 type userCreateStruct struct {
 	FullName string `json:"FullName"`
 	Email    string `json:"Email"`
