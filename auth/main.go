@@ -5,7 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
+	_ "github.com/go-sql-driver/mysql"
+	uuid "github.com/google/uuid"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
@@ -61,14 +62,14 @@ func main() {
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
+	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword)
 	db, err := sql.Open("mysql", dbConnectString)
 
 	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
-
-	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelfunc()
 
 	res, err := db.Exec(createDB)
 	if err != nil {
@@ -81,9 +82,6 @@ func main() {
 	db, err = sql.Open("mysql", dbConnectString)
 
 	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
-
-	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelfunc()
 
 	res, err = db.ExecContext(ctx, query)
 	if err != nil {
@@ -197,6 +195,19 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 
 	l.Printf("%s\n%s\n%s\n%s\n", user.UserName, user.FullName, user.Email, user.Password)
 
+	if user.UserName == "" {
+		return
+	}
+	if user.FullName == "" {
+		return
+	}
+	if user.Email == "" {
+		return
+	}
+	if user.Password == "" {
+		return
+	}
+
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
 	db, err := sql.Open("mysql", dbConnectString)
@@ -213,14 +224,16 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	// Check if user exists already
 	checkEmailExists, err := db.Query(checkQueryEmail)
 	if checkEmailExists.Next() {
-		fmt.Fprintf(w, `{"UserExists": "true"}`)
+		exists := fmt.Sprintf(`{"UserExists": "true"}`)
+		fmt.Fprintf(w, "%s\n", exists)
 		l.Printf("Email %s already exists!", user.Email)
 		return
 	}
 
 	checkUserNameExists, err := db.Query(checkQueryUserName)
 	if checkUserNameExists.Next() {
-		fmt.Fprintf(w, `{"UserExists": "true"}\n`)
+		exists := fmt.Sprintf(`{"UserExists": "true"}`)
+		fmt.Fprintf(w, "%s\n", exists)
 		l.Printf("User %s already exists!", user.UserName)
 		return
 	}
