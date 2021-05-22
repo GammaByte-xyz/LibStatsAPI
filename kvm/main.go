@@ -7,7 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
-	uuid "github.com/google/uuid"
+	//uuid "github.com/google/uuid"
 	"github.com/libvirt/libvirt-go"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
@@ -39,7 +39,7 @@ func handleRequests() {
 	http.HandleFunc("/api/kvm/create/domain", createDomain)
 	http.HandleFunc("/api/kvm/delete/domain", deleteDomain)
 	http.HandleFunc("/api/vnc/proxy/create", vncProxy)
-	http.HandleFunc("/api/auth/user/create", createUser)
+	//http.HandleFunc("/api/auth/user/create", createUser)
 
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -287,14 +287,14 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	return ownsVps
 }
 
-type userCreateStruct struct {
+/*type userCreateStruct struct {
 	FullName string `json:"FullName"`
 	Email    string `json:"Email"`
 	Password string `json:"Password"`
 	UserName string `json:"UserName"`
-}
+}*/
 
-func createUser(w http.ResponseWriter, r *http.Request) {
+/*func createUser(w http.ResponseWriter, r *http.Request) {
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
@@ -398,7 +398,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	returnJson := fmt.Sprintf(`{"Token": "%s", "JoinDate": "%s", "UUID": "%s"}`, token, joinDate, uuidValue)
 	fmt.Fprintf(w, "%s\n", returnJson)
 }
-
+*/
 func GenerateSecureToken(length int) string {
 	b := make([]byte, length)
 	if _, err := rand.Read(b); err != nil {
