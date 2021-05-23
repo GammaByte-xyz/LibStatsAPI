@@ -21,6 +21,7 @@ import (
 func handleRequests() {
 	http.HandleFunc("/api/auth/user/create", createUser)
 	http.HandleFunc("/api/auth/user/vms", getUserDomains)
+	http.HandleFunc("/api/auth/vm", authenticateDomain)
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
@@ -93,7 +94,7 @@ func main() {
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
-	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -176,6 +177,9 @@ type dbValues struct {
 	UserFullName string
 	UserName     string
 	UserToken    string
+	Ram          int
+	Vcpus        int
+	Storage      int
 }
 
 type domName struct {
@@ -270,6 +274,104 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Println(string(jsonData))
 	fmt.Fprintf(w, "%s\n", string(jsonData))
+
+}
+
+type authDomainStruct struct {
+	DomainName string `json:"DomainName"`
+	UserToken  string `json:"Token"`
+	UserEmail  string `json:"Email"`
+}
+
+func authenticateDomain(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Decode JSON & assign the json value struct to a variable we can use here
+	decoder := json.NewDecoder(r.Body)
+	var vps *authDomainStruct = &authDomainStruct{}
+
+	// Decode the struct internally
+	err = decoder.Decode(&vps)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+
+	if vps.DomainName == "" {
+		return
+	}
+	if vps.UserToken == "" {
+		return
+	}
+	if vps.UserEmail == "" {
+		return
+	}
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	ownsDomain := verifyOwnership(vps.UserToken, vps.DomainName, vps.UserEmail)
+	if ownsDomain == false {
+		l.Printf("User with email %s has requested unauthorized access to %s!\n", vps.UserEmail, vps.DomainName)
+		UnauthorizedString := fmt.Sprint(`{"Unauthorized": "true"}`)
+		fmt.Fprintf(w, "%s\n", UnauthorizedString)
+		return
+	}
+
+	query := fmt.Sprintf("SELECT domain_name, ram, vcpus, storage FROM domaininfo WHERE user_email = '%s' AND user_token = '%s' AND domain_name = '%s'", vps.UserEmail, vps.UserToken, vps.DomainName)
+
+	rows, err := db.Query(query)
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	defer rows.Close()
+
+	var domain string
+	var domRam int
+	var domCpus int
+	var domStorage int
+
+	for rows.Next() {
+		err := rows.Scan(&domain, &domRam, &domCpus, &domStorage)
+		if err != nil {
+			l.Println(err)
+			return
+		}
+		l.Printf("VPS Name: %s\n", domain)
+		l.Printf("RAM: %d\n", domRam)
+		l.Printf("vCPUs: %d\n", domCpus)
+		l.Printf("Storage: %d\n", domStorage)
+	}
+	JsonString := fmt.Sprintf(`{"DomainName": "%s", "DomainRam": "%d", "DomainCpus": "%d", "DomainStorage": "%d"}`, domain, domRam, domCpus, domStorage)
+	fmt.Fprintf(w, "%s\n", JsonString)
 
 }
 
@@ -400,4 +502,71 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 
 	returnJson := fmt.Sprintf(`{"Token": "%s", "JoinDate": "%s", "UUID": "%s"}`, token, joinDate, uuidValue)
 	fmt.Fprintf(w, "%s\n", returnJson)
+}
+
+// Verifies the ownership of a user to a VPS
+func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
+	// Make sure all values exist
+	if userToken == "" {
+		return false
+	}
+	if vpsName == "" {
+		return false
+	}
+	if userEmail == "" {
+		return false
+	}
+
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		l.Println(err)
+		return false
+	}
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	// Execute the query checking for the user binding to the VPS
+	checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)
+	checkOwnership := db.QueryRow(checkQuery)
+
+	var ownsVps bool
+
+	switch err := checkOwnership.Scan(&vpsName); err {
+	case sql.ErrNoRows:
+		ownsVps = false
+		return ownsVps
+	case nil:
+		ownsVps = true
+	default:
+		l.Println(err)
+	}
+
+	l.Printf("Owns VPS: %t", ownsVps)
+
+	if ownsVps == false {
+		l.Printf("Unauthorized access to %s requested!", vpsName)
+	}
+
+	/*if checkOwnership.Next(); bool(ownsVps) {
+		ownsVps = false
+		l.Printf("Owns VPS: %t", ownsVps)
+		return ownsVps
+	} else {
+		l.Printf("Unauthorized access to %s requested!", vpsName)
+		fmt.Println(checkOwnership.Next())
+		ownsVps = true
+		l.Printf("Owns VPS: %t", ownsVps)
+		return ownsVps
+	}*/
+	return ownsVps
 }

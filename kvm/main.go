@@ -116,7 +116,7 @@ func main() {
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
-	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -716,6 +716,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	if ableToCreate == false {
 		deniedString := fmt.Sprintf(`{"EnoughResources": "false"}`)
 		fmt.Fprintf(w, "%s\n", deniedString)
+		l.Printf("%s\n", deniedString)
 		return
 	}
 
@@ -1153,7 +1154,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "  VPS MAC Address: %s\n", macAddr)
 	}
 
-	domIP := setIP(t.Network, macAddr, domainName, qcow2Name, t.UserEmail, t.FullName, t.Username, t.UserToken)
+	domIP := setIP(t.Network, macAddr, domainName, qcow2Name, t.UserEmail, t.FullName, t.Username, t.UserToken, t.RamSize, t.CpuSize, t.DiskSize)
 	if domIP == "" {
 		l.Println("Could not assign local IP to VM")
 		return
@@ -1185,10 +1186,13 @@ type dbValues struct {
 	UserFullName string
 	UserName     string
 	UserToken    string
+	Ram          int
+	Vcpus        int
+	Storage      int
 }
 
 // Set the IP address of the VM based on the MAC
-func setIP(network string, macAddr string, domainName string, qcow2Name string, userEmail string, userFullName string, userName string, userToken string) string {
+func setIP(network string, macAddr string, domainName string, qcow2Name string, userEmail string, userFullName string, userName string, userToken string, domainRam int, domainCpus int, domainStorage int) string {
 
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -1215,7 +1219,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 	// executing
 	defer db.Close()
 
-	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -1318,13 +1322,13 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 		}
 
 	} else if exists == true {
-		setIP(network, macAddr, domainName, qcow2Name, userEmail, userFullName, userName, userToken)
+		setIP(network, macAddr, domainName, qcow2Name, userEmail, userFullName, userName, userToken, domainRam, domainCpus, domainStorage)
 	}
 
 	// Get the current date/time
 	dt := time.Now()
 	// Generate the insert string
-	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ip_address, disk_path, time_created, user_email, user_full_name, username, user_token) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName, userToken)
+	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ram, vcpus, storage, ip_address, disk_path, time_created, user_email, user_full_name, username, user_token) VALUES ('%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, domainRam, domainCpus, domainStorage, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName, userToken)
 	l.Printf("MySQL ==> %s\n\n", insertData)
 
 	res, err = db.Exec(insertData)
@@ -1504,10 +1508,10 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Domain to delete: %s\n", t.VpsName)
 
 		var d dbValues
-		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
+		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, ram, vcpus, storage, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
 		l.Println(queryData)
-		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
-		l.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n User Email: %s\n User's Full Name: %s\n Username: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.NetworkName, d.DiskPath, d.TimeCreated, d.UserEmail, d.UserFullName, d.UserName)
+		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.Ram, &d.Vcpus, &d.Storage, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
+		l.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n RAM: %dGB\n vCPUS: %d\n Storage: %dGB\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n User Email: %s\n User's Full Name: %s\n Username: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.Ram, d.Vcpus, d.Storage, d.NetworkName, d.DiskPath, d.TimeCreated, d.UserEmail, d.UserFullName, d.UserName)
 		if err != nil {
 			l.Println(err.Error())
 		}
