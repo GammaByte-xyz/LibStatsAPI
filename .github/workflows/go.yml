@@ -1,4 +1,4 @@
-name: Go
+name: Build KVM portion of software
 
 on:
   push:
@@ -28,12 +28,11 @@ jobs:
    #   run: |
    #      golint ./...
    #      go vet ./...
-
-
+      
     - name: Build
-      run: go build -v .
+      run: cd kvm/ && go build -v .
 
     - name: Test
-      run: go test -v .
+      run: cd kvm/ && go test -v .
       
 
