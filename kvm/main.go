@@ -1401,7 +1401,7 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Println("failed to connect to qemu\n")
+		l.Println("failed to connect to qemu")
 		return
 	}
 	defer conn.Close()
