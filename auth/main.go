@@ -20,7 +20,7 @@ import (
 
 func handleRequests() {
 	http.HandleFunc("/api/auth/user/create", createUser)
-
+	http.HandleFunc("/api/auth/user/vms", getUserDomains)
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
@@ -73,7 +73,7 @@ func main() {
 
 	res, err := db.Exec(createDB)
 	if err != nil {
-		l.Fatalf("Error %s when creating lsapi DB\n", err)
+		l.Printf("Error %s when creating lsapi DB\n", err)
 	}
 
 	db.Close()
@@ -81,15 +81,15 @@ func main() {
 	dbConnectString = fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
 	db, err = sql.Open("mysql", dbConnectString)
 
-	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
+	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, max_vcpus int, max_ram int, max_block_storage int, used_vcpus int, used_ram int, used_block_storage int, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
 
 	res, err = db.ExecContext(ctx, query)
 	if err != nil {
-		l.Fatalf("Error %s when creating users table\n", err)
+		l.Printf("Error %s when creating users table\n", err)
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		l.Fatalf("Error %s when getting rows affected\n", err)
+		l.Printf("Error %s when getting rows affected\n", err)
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
@@ -100,12 +100,12 @@ func main() {
 
 	res, err = db.ExecContext(ctx, query)
 	if err != nil {
-		l.Fatalf("Error %s when creating domaininfo table\n", err)
+		l.Printf("Error %s when creating domaininfo table\n", err)
 	}
 
 	rows, err = res.RowsAffected()
 	if err != nil {
-		l.Fatalf("Error %s when getting rows affected\n", err)
+		l.Printf("Error %s when getting rows affected\n", err)
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
@@ -140,6 +140,10 @@ type userCreateStruct struct {
 	UserName string `json:"UserName"`
 }
 
+type getDomainsStruct struct {
+	Token string `json:"Token"`
+}
+
 type configFile struct {
 	VolumePath      string `yaml:"volume_path"`
 	ListenPort      string `yaml:"listen_port"`
@@ -159,6 +163,114 @@ func GenerateSecureToken(length int) string {
 		return ""
 	}
 	return hex.EncodeToString(b)
+}
+
+type dbValues struct {
+	DomainName   string
+	NetworkName  string
+	MacAddress   string
+	IpAddress    string
+	DiskPath     string
+	TimeCreated  string
+	UserEmail    string
+	UserFullName string
+	UserName     string
+	UserToken    string
+}
+
+type domName struct {
+	DomainName string
+	ID         int
+}
+
+func getUserDomains(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Decode JSON & assign the json value struct to a variable we can use here
+	decoder := json.NewDecoder(r.Body)
+	var user = &getDomainsStruct{}
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	// Decode the struct internally
+	err = decoder.Decode(&user)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		panic(err.Error())
+	}
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	query := fmt.Sprintf(`SELECT domain_name FROM domaininfo WHERE user_token='%s'`, user.Token)
+
+	dbVars, err := db.Query(query)
+	if err != nil {
+		l.Println("Could not get domains from MySQL.")
+	}
+
+	l.Printf("All LibStatsAPI Managed VMs:\n")
+	//fmt.Fprintf(w, "All LibStatsAPI Managed VMs:\n")
+
+	columns, err := dbVars.Columns()
+	if err != nil {
+		return
+	}
+
+	count := len(columns)
+	tableData := make([]map[string]interface{}, 0)
+	values := make([]interface{}, count)
+	valuePtrs := make([]interface{}, count)
+	for dbVars.Next() {
+		for i := 0; i < count; i++ {
+			valuePtrs[i] = &values[i]
+		}
+		dbVars.Scan(valuePtrs...)
+		entry := make(map[string]interface{})
+		for i, col := range columns {
+			var v interface{}
+			val := values[i]
+			b, ok := val.([]byte)
+			if ok {
+				v = string(b)
+			} else {
+				v = val
+			}
+			entry[col] = v
+		}
+		tableData = append(tableData, entry)
+	}
+	jsonData, err := json.Marshal(tableData)
+	if err != nil {
+		return
+	}
+	fmt.Println(string(jsonData))
+	fmt.Fprintf(w, "%s\n", string(jsonData))
+
 }
 
 func createUser(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +305,11 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	l.Printf("%s\n%s\n%s\n%s\n", user.UserName, user.FullName, user.Email, user.Password)
+	l.Println("Request recieved to create user!")
+	l.Printf("  Username: %s\n", user.UserName)
+	l.Printf("  Full Name: %s\n", user.FullName)
+	l.Printf("  Email Adddress: %s\n", user.Email)
+	l.Println("  Password: <PRIVATE>")
 
 	if user.UserName == "" {
 		return
@@ -246,12 +362,14 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 
 	res, err := db.ExecContext(ctx, query)
 	if err != nil {
-		l.Fatalf("Error %s when creating users table\n", err)
+		l.Printf("Error %s when creating users table\n", err)
+		return
 	}
 
 	rows, err := res.RowsAffected()
 	if err != nil {
-		l.Fatalf("Error %s when getting rows affected\n", err)
+		l.Printf("Error %s when getting rows affected\n", err)
+		return
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
@@ -259,7 +377,8 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	joinDate := time.Now()
 	uuidValue, err := uuid.NewUUID()
 	if err != nil {
-		l.Fatalf("Error %s when generating UUID\n", err)
+		l.Printf("Error %s when generating UUID\n", err)
+		return
 	}
 	token := GenerateSecureToken(24)
 
@@ -268,12 +387,14 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 
 	res, err = db.ExecContext(ctx, insertQuery)
 	if err != nil {
-		l.Fatalf("Error %s when inserting user info\n", err)
+		l.Printf("Error %s when inserting user info\n", err)
+		return
 	}
 
 	rows, err = res.RowsAffected()
 	if err != nil {
-		l.Fatalf("Error %s when getting rows affected\n", err)
+		l.Printf("Error %s when getting rows affected\n", err)
+		return
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 

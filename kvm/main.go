@@ -101,7 +101,7 @@ func main() {
 	dbConnectString = fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
 	db, err = sql.Open("mysql", dbConnectString)
 
-	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
+	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, max_vcpus int, max_ram int, max_block_storage int, used_vcpus int, used_ram int, used_block_storage int, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -157,7 +157,16 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO Check to see if the user owns the VPS or not
+	if t.Email == "" {
+		return
+	}
+	if t.UserToken == "" {
+		return
+	}
+	if t.VpsName == "" {
+		return
+	}
+
 	ownsVps := verifyOwnership(t.UserToken, t.VpsName, t.Email)
 
 	if ownsVps == false {
@@ -231,6 +240,17 @@ func purgeOldConfig(vncToken string, configPath string, vpsName string) {
 
 // Verifies the ownership of a user to a VPS
 func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
+	// Make sure all values exist
+	if userToken == "" {
+		return false
+	}
+	if vpsName == "" {
+		return false
+	}
+	if userEmail == "" {
+		return false
+	}
+
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
@@ -505,6 +525,129 @@ func random(min int, max int) int {
 	return rand.Intn(max-min) + min
 }
 
+type maxResources struct {
+	vcpus   int
+	ram     int
+	storage int
+}
+
+type usedResources struct {
+	vcpus   int
+	ram     int
+	storage int
+}
+
+// This validates that the user has purchased enough resources to provision a VM.
+func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool {
+
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		l.Println(err)
+		return false
+	}
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	// Get struct Values
+	resourcesMax := maxResources{}
+	resourcesUsed := usedResources{}
+
+	// Execute the queries checking for the user's max resources
+	query := fmt.Sprintf("select max_vcpus, max_ram, max_block_storage from users where user_token = '%s'", userToken)
+	rows, err := db.Query(query)
+
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(&resourcesMax.vcpus, &resourcesMax.ram, &resourcesMax.storage)
+		if err != nil {
+			l.Println(err)
+			return false
+		}
+		l.Println(resourcesMax)
+	}
+	err = rows.Err()
+	if err != nil {
+		l.Println(err)
+		return false
+	}
+
+	// Execute the queries checking for the user's used resources
+	query = fmt.Sprintf("select used_vcpus, used_ram, used_block_storage from users where user_token = '%s'", userToken)
+	rows, err = db.Query(query)
+
+	defer rows.Close()
+	for rows.Next() {
+		err = rows.Scan(&resourcesUsed.vcpus, &resourcesUsed.ram, &resourcesUsed.storage)
+		if err != nil {
+			l.Println(err)
+			return false
+		}
+		l.Println(resourcesUsed)
+	}
+	err = rows.Err()
+	if err != nil {
+		l.Println(err)
+		return false
+	}
+
+	var hasEnoughRam bool
+	var hasEnoughCpus bool
+	var hasEnoughStorage bool
+	var hasEnoughResources bool
+
+	if ramSize+resourcesUsed.ram > resourcesMax.ram {
+		hasEnoughRam = false
+		l.Println("Has enough RAM: false")
+	} else if ramSize+resourcesUsed.ram < resourcesMax.ram {
+		hasEnoughRam = true
+		l.Println("Has enough RAM: true")
+	}
+
+	if cpuSize+resourcesUsed.vcpus > resourcesMax.vcpus {
+		hasEnoughCpus = false
+		l.Println("Has enough CPUs: false")
+	} else if cpuSize+resourcesUsed.vcpus < resourcesMax.vcpus {
+		hasEnoughCpus = true
+		l.Println("Has enough CPUs: true")
+	}
+
+	if diskSize+resourcesUsed.storage > resourcesMax.storage {
+		hasEnoughStorage = false
+		l.Println("Has enough storage: false")
+	} else if diskSize+resourcesUsed.storage < resourcesMax.storage {
+		hasEnoughStorage = true
+		l.Println("Has enough storage: true")
+	}
+
+	if (hasEnoughRam && hasEnoughCpus && hasEnoughStorage) == true {
+		newRamSize := resourcesUsed.ram + ramSize
+		newCpuSize := resourcesUsed.vcpus + cpuSize
+		newStorageSize := resourcesUsed.storage + diskSize
+		query := fmt.Sprintf("UPDATE users SET used_ram = %d, used_vcpus = %d, used_block_storage = %d WHERE user_token = '%s'", newRamSize, newCpuSize, newStorageSize, userToken)
+		l.Printf("MySQL ==> %s\n", query)
+		db.Exec(query)
+		hasEnoughResources = true
+	} else {
+		hasEnoughResources = false
+	}
+
+	l.Println("--------------")
+	l.Printf("Has enough RAM: %t\n", hasEnoughRam)
+	l.Printf("Has enough CPUs: %t\n", hasEnoughCpus)
+	l.Printf("Has enough storage: %t\n", hasEnoughStorage)
+	l.Printf("Has enough total resources: %t\n", hasEnoughResources)
+	return hasEnoughResources
+}
+
 // Create the VPS
 func createDomain(w http.ResponseWriter, r *http.Request) {
 
@@ -528,13 +671,56 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	// Decode the struct internally
 	err = decoder.Decode(&t)
+
 	if err != nil {
 		l.Println(err.Error())
 		return
 	} else {
-		fmt.Fprintf(w, "\n  [1/6] Request received! Provisioning VM...\n")
-		fmt.Fprintf(w, "  ------------------------------------------\n")
+		if t.RamSize == 0 {
+			l.Println("API did not send RAM size")
+			return
+		}
+		if t.CpuSize == 0 {
+			l.Println("API did not send CPU size")
+			return
+		}
+		if t.DiskSize == 0 {
+			l.Println("API did not send disk size")
+			return
+		}
+		if t.Network == "" {
+			l.Println("API did not send network name")
+			return
+		}
+		if t.NetworkFilter == "" {
+			l.Println("API did not send network filter name")
+			return
+		}
+		if t.Username == "" {
+			l.Println("API did not send Username")
+			return
+		}
+		if t.UserEmail == "" {
+			l.Println("API did not send Email")
+			return
+		}
+		if t.UserToken == "" {
+			l.Println("API did not send user token")
+			return
+		}
 	}
+
+	// Validate the user's ability to create the VM.
+	// If the user does not have enough resources purchased, the request will be denied.
+	ableToCreate := ableToCreate(t.UserToken, t.RamSize, t.CpuSize, t.DiskSize)
+	if ableToCreate == false {
+		deniedString := fmt.Sprintf(`{"EnoughResources": "false"}`)
+		fmt.Fprintf(w, "%s\n", deniedString)
+		return
+	}
+
+	fmt.Fprintf(w, "\n  [1/6] Request received! Provisioning VM...\n")
+	fmt.Fprintf(w, "  ------------------------------------------\n")
 
 	// Print values to both console and API output
 	l.Printf("Got API request.\n\n")
@@ -998,6 +1184,7 @@ type dbValues struct {
 	UserEmail    string
 	UserFullName string
 	UserName     string
+	UserToken    string
 }
 
 // Set the IP address of the VM based on the MAC
