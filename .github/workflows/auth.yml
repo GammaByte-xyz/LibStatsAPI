@@ -1,0 +1,38 @@
+name: Build Authentication portion of software
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Test Go build
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.16
+        
+    - name: Install dependencies for build
+      run: sudo apt-get install -y libvirt-dev mariadb 
+        
+    #- name: Install dependencies
+    #  run: go get -u golang.org/x/lint/golint
+      
+   # - name: Lint
+   #   run: |
+   #      golint ./...
+   #      go vet ./...
+      
+    - name: Build
+      run: cd auth/ && go build -v .
+
+    - name: Test
+      run: cd auth/ && go test -v .
+      
+
