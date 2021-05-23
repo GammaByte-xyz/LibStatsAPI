@@ -28,14 +28,11 @@ jobs:
    #   run: |
    #      golint ./...
    #      go vet ./...
-
-    - name: Change Directory
-      run: cd kvm/
       
     - name: Build
-      run: go build -v .
+      run: cd kvm/ && go build -v .
 
     - name: Test
-      run: go test -v .
+      run: cd kvm/ && go test -v .
       
 
