@@ -1,17 +1,18 @@
 package main
 
 import (
+	"crypto/sha512"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	uuid "github.com/google/uuid"
+	"github.com/thanhpk/randstr"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -22,6 +23,8 @@ func handleRequests() {
 	http.HandleFunc("/api/auth/user/create", createUser)
 	http.HandleFunc("/api/auth/user/vms", getUserDomains)
 	http.HandleFunc("/api/auth/vm", authenticateDomain)
+	http.HandleFunc("/api/auth/login", userLogin)
+	http.HandleFunc("/api/auth/login/verify", verifyToken)
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
@@ -32,10 +35,10 @@ func handleRequests() {
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
-	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
+	//listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
 
 	// Listen on specified port
-	l.Fatal(http.ListenAndServe(listenAddr, nil))
+	l.Fatal(http.ListenAndServe("0.0.0.0:8081", nil))
 }
 
 // This is 1 GiB (gibibyte) in bytes
@@ -67,7 +70,7 @@ func main() {
 	defer cancelfunc()
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 
 	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
@@ -79,7 +82,7 @@ func main() {
 
 	db.Close()
 
-	dbConnectString = fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString = fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err = sql.Open("mysql", dbConnectString)
 
 	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, max_vcpus int, max_ram int, max_block_storage int, used_vcpus int, used_ram int, used_block_storage int, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
@@ -150,6 +153,7 @@ type configFile struct {
 	ListenPort      string `yaml:"listen_port"`
 	ListenAddress   string `yaml:"listen_address"`
 	SqlPassword     string `yaml:"sql_password"`
+	SqlAddress      string `yaml:"sql_address"`
 	Manufacturer    string `yaml:"vm_manufacturer"`
 	SqlUser         string `yaml:"sql_user"`
 	DomainBandwidth int    `yaml:"domain_bandwidth"`
@@ -159,11 +163,8 @@ type configFile struct {
 var l = log.New(os.Stdout, "[LibStatsAPI-Auth] ", 2)
 
 func GenerateSecureToken(length int) string {
-	b := make([]byte, length)
-	if _, err := rand.Read(b); err != nil {
-		return ""
-	}
-	return hex.EncodeToString(b)
+	token := randstr.String(length) // generate 128-bit hex string
+	return token
 }
 
 type dbValues struct {
@@ -185,6 +186,87 @@ type dbValues struct {
 type domName struct {
 	DomainName string
 	ID         int
+}
+
+type tokenVerify struct {
+	Token string `json:"Token"`
+	Email string `json:"Email"`
+}
+
+func verifyToken(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Decode JSON & assign the json value struct to a variable we can use here
+	decoder := json.NewDecoder(r.Body)
+	var verify = &tokenVerify{}
+
+	// Decode the struct internally
+	err = decoder.Decode(&verify)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+
+	if verify.Email == "" {
+		return
+	}
+	if verify.Token == "" {
+		return
+	}
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	query := fmt.Sprintf("SELECT email_address FROM users WHERE user_token = '%s'", verify.Token)
+	rows, err := db.Query(query)
+
+	var dbEmail string
+	for rows.Next() {
+		err := rows.Scan(&dbEmail)
+		if err != nil {
+			l.Println(err)
+			return
+		}
+	}
+	if dbEmail == verify.Email {
+		returnJson := fmt.Sprintf(`{"AuthSuccess": "true"}`)
+		fmt.Fprintf(w, "%s\n", returnJson)
+		l.Printf("User %s token verified successfully!", verify.Email)
+	} else if dbEmail != verify.Email {
+		returnJson := fmt.Sprintf(`{"AuthSuccess": "false"}`)
+		fmt.Fprintf(w, "%s\n", returnJson)
+		l.Printf("User %s token was incorrect!", verify.Email)
+		return
+	}
+
 }
 
 func getUserDomains(w http.ResponseWriter, r *http.Request) {
@@ -220,7 +302,7 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -230,7 +312,7 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 	// executing
 	defer db.Close()
 
-	query := fmt.Sprintf(`SELECT domain_name FROM domaininfo WHERE user_token='%s'`, user.Token)
+	query := fmt.Sprintf(`SELECT JSON_ARRAYAGG(JSON_OBJECT('domain_name', domain_name)) FROM domaininfo WHERE user_token = '%s'`, user.Token)
 
 	dbVars, err := db.Query(query)
 	if err != nil {
@@ -238,42 +320,54 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 	}
 
 	l.Printf("All LibStatsAPI Managed VMs:\n")
-	//fmt.Fprintf(w, "All LibStatsAPI Managed VMs:\n")
 
-	columns, err := dbVars.Columns()
-	if err != nil {
-		return
-	}
+	var jsonString string
 
-	count := len(columns)
-	tableData := make([]map[string]interface{}, 0)
-	values := make([]interface{}, count)
-	valuePtrs := make([]interface{}, count)
 	for dbVars.Next() {
-		for i := 0; i < count; i++ {
-			valuePtrs[i] = &values[i]
+		dbVars.Scan(&jsonString)
+		fmt.Fprintf(w, "%s\n", jsonString)
+		l.Printf("%s\n", jsonString)
+	}
+
+	//fmt.Fprintf(w, "%s\n", jsonString)
+	//l.Printf( "%s\n", jsonString)
+
+	//fmt.Fprintf(w, "All LibStatsAPI Managed VMs:\n")
+	/*
+		columns, err := dbVars.Columns()
+		if err != nil {
+			return
 		}
-		dbVars.Scan(valuePtrs...)
-		entry := make(map[string]interface{})
-		for i, col := range columns {
-			var v interface{}
-			val := values[i]
-			b, ok := val.([]byte)
-			if ok {
-				v = string(b)
-			} else {
-				v = val
+
+		count := len(columns)
+		tableData := make([]map[string]interface{}, 0)
+		values := make([]interface{}, count)
+		valuePtrs := make([]interface{}, count)
+		for dbVars.Next() {
+			for i := 0; i < count; i++ {
+				valuePtrs[i] = &values[i]
 			}
-			entry[col] = v
+			dbVars.Scan(valuePtrs...)
+			entry := make(map[string]interface{})
+			for i, col := range columns {
+				var v interface{}
+				val := values[i]
+				b, ok := val.([]byte)
+				if ok {
+					v = string(b)
+				} else {
+					v = val
+				}
+				entry[col] = v
+			}
+			tableData = append(tableData, entry)
 		}
-		tableData = append(tableData, entry)
-	}
-	jsonData, err := json.Marshal(tableData)
-	if err != nil {
-		return
-	}
-	fmt.Println(string(jsonData))
-	fmt.Fprintf(w, "%s\n", string(jsonData))
+		jsonData, err := json.Marshal(tableData)
+		if err != nil {
+			return
+		}
+		fmt.Println(string(jsonData))
+		fmt.Fprintf(w, "%s\n", string(jsonData))*/
 
 }
 
@@ -283,13 +377,124 @@ type authDomainStruct struct {
 	UserEmail  string `json:"Email"`
 }
 
+type authLogin struct {
+	Email    string `json:"Email"`
+	Password string `json:"Password"`
+}
+
+func userLogin(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Decode JSON & assign the json value struct to a variable we can use here
+	decoder := json.NewDecoder(r.Body)
+	var login = &authLogin{}
+
+	// Decode the struct internally
+	err = decoder.Decode(&login)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+
+	if login.Email == "" {
+		return
+	}
+	if login.Password == "" {
+		return
+	}
+
+	// Connect to MariaDB
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	// defer the close till after the main function has finished
+	// executing
+	defer db.Close()
+
+	// Compare password hashes
+	query := fmt.Sprintf("SELECT password FROM users WHERE email_address = '%s'", login.Email)
+	rows, err := db.Query(query)
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	defer rows.Close()
+
+	var dbPassword string
+	for rows.Next() {
+		err := rows.Scan(&dbPassword)
+		if err != nil {
+			l.Println(err)
+			return
+		}
+	}
+
+	sha512Bytes := sha512.Sum512([]byte(login.Password))
+	requestedPassHash := hex.EncodeToString(sha512Bytes[:])
+
+	if requestedPassHash == dbPassword {
+		tokenQuery := fmt.Sprintf("SELECT user_token FROM users WHERE email_address = '%s' AND password = '%s'", login.Email, requestedPassHash)
+		rows, err := db.Query(tokenQuery)
+		if err != nil {
+			l.Println(err)
+			return
+		}
+		var userToken string
+		for rows.Next() {
+			err := rows.Scan(&userToken)
+			if err != nil {
+				l.Println(err)
+				return
+			}
+		}
+		jsonReply := fmt.Sprintf(`{"Token": "%s", "Email": "%s"}`, userToken, login.Email)
+		fmt.Fprintf(w, "%s\n", jsonReply)
+	} else {
+		http.Error(w, "Unauthorized:", 401)
+	}
+
+	l.Printf("Password sent: %s\n", requestedPassHash)
+	l.Printf("Password that exists: %s\n", dbPassword)
+}
+
 func authenticateDomain(w http.ResponseWriter, r *http.Request) {
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
 	if err != nil {
-		panic(err)
+		l.Println(err)
+		return
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -326,7 +531,7 @@ func authenticateDomain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -427,7 +632,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -467,7 +672,6 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		l.Printf("Error %s when creating users table\n", err)
 		return
 	}
-
 	rows, err := res.RowsAffected()
 	if err != nil {
 		l.Printf("Error %s when getting rows affected\n", err)
@@ -482,10 +686,12 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		l.Printf("Error %s when generating UUID\n", err)
 		return
 	}
-	token := GenerateSecureToken(24)
+	token := GenerateSecureToken(64)
 
+	passwordHex := sha512.Sum512([]byte(user.Password))
+	passwordString := hex.EncodeToString(passwordHex[:])
 	// Gather information from JSON input to generate user data, then put it in MariaDB.
-	insertQuery := fmt.Sprintf("INSERT INTO users (username, full_name, user_token, email_address, join_date, uuid, password) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', SHA('%s'));", user.UserName, user.FullName, token, user.Email, joinDate.String(), uuidValue.String(), user.Password)
+	insertQuery := fmt.Sprintf("INSERT INTO users (username, full_name, user_token, email_address, join_date, uuid, password, max_vcpus, max_ram, max_block_storage, used_vcpus, used_ram, used_block_storage) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, %d);", user.UserName, user.FullName, token, user.Email, joinDate.String(), uuidValue.String(), passwordString, 0, 0, 0, 0, 0, 0)
 
 	res, err = db.ExecContext(ctx, insertQuery)
 	if err != nil {
@@ -500,7 +706,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
-	returnJson := fmt.Sprintf(`{"Token": "%s", "JoinDate": "%s", "UUID": "%s"}`, token, joinDate, uuidValue)
+	returnJson := fmt.Sprintf(`{"Token": "%s", "JoinDate": "%s", "UUID": "%s", "Email": "%s"}`, token, joinDate, uuidValue, user.Email)
 	fmt.Fprintf(w, "%s\n", returnJson)
 }
 
@@ -524,7 +730,7 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -569,4 +775,5 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 		return ownsVps
 	}*/
 	return ownsVps
+
 }

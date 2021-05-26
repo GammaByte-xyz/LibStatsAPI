@@ -7,6 +7,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
+	"strconv"
+	"strings"
+
 	//uuid "github.com/google/uuid"
 	"github.com/libvirt/libvirt-go"
 	"golang.org/x/net/context"
@@ -39,6 +42,7 @@ func handleRequests() {
 	http.HandleFunc("/api/kvm/create/domain", createDomain)
 	http.HandleFunc("/api/kvm/delete/domain", deleteDomain)
 	http.HandleFunc("/api/vnc/proxy/create", vncProxy)
+	http.HandleFunc("/api/kvm/power/toggle", togglePower)
 	//http.HandleFunc("/api/auth/user/create", createUser)
 
 	// Parse the config file
@@ -83,7 +87,7 @@ func main() {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 
 	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
@@ -98,7 +102,7 @@ func main() {
 
 	db.Close()
 
-	dbConnectString = fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString = fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err = sql.Open("mysql", dbConnectString)
 
 	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, max_vcpus int, max_ram int, max_block_storage int, used_vcpus int, used_ram int, used_block_storage int, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
@@ -144,11 +148,19 @@ func main() {
 }
 
 func vncProxy(w http.ResponseWriter, r *http.Request) {
+
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
 	decoder := json.NewDecoder(r.Body)
 	var t *vncProxyValues = &vncProxyValues{}
 
 	// Set the maximum bytes able to be consumed by the API to prevent denial of service
-	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
 	// Decode the struct internally
 	err := decoder.Decode(&t)
@@ -169,7 +181,10 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 
 	ownsVps := verifyOwnership(t.UserToken, t.VpsName, t.Email)
 
-	if ownsVps == false {
+	if ownsVps != true {
+		authJsonString := fmt.Sprintf(`{"Unauthorized": "true"}`)
+		fmt.Fprintf(w, "%s\n", authJsonString)
+		l.Printf("%t\n", ownsVps)
 		return
 	}
 
@@ -238,6 +253,95 @@ func purgeOldConfig(vncToken string, configPath string, vpsName string) {
 	l.Printf("Removed VNC token created 3 hours ago for VPS %s at %s", vpsName, time.Now())
 }
 
+type togglePowerVars struct {
+	Token      string `json:"Token"`
+	DomainName string `json:"DomainName"`
+	Email      string `json:"Email"`
+}
+
+func togglePower(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	decoder := json.NewDecoder(r.Body)
+	var togglePower *togglePowerVars = &togglePowerVars{}
+
+	// Decode the struct internally
+	err = decoder.Decode(&togglePower)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+	if togglePower.DomainName == "" {
+		return
+	}
+	if togglePower.Token == "" {
+		return
+	}
+	if togglePower.Email == "" {
+		return
+	}
+
+	ownsDomain := verifyOwnership(togglePower.Token, togglePower.DomainName, togglePower.Email)
+	if ownsDomain == false {
+		returnJson := fmt.Sprintf(`{"Unauthorized": "true"}`)
+		fmt.Fprintf(w, "%s\n", returnJson)
+		return
+	}
+
+	// Connect to qemu-kvm
+	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
+	if err != nil {
+		l.Println("Failed to connect to qemu/kvm.")
+		return
+	} else {
+		l.Printf("Successfully connected to QEMU-KVM to query for domain statistics.\n")
+	}
+	defer conn.Close()
+
+	dom, err := conn.LookupDomainByName(togglePower.DomainName)
+	State, _, err := dom.GetState()
+	if State == libvirt.DOMAIN_RUNNING {
+		err = dom.Destroy()
+		if err != nil {
+			returnJson := fmt.Sprintf(`{"Success": "false"}`)
+			fmt.Fprintf(w, "%s\n", returnJson)
+			return
+		} else {
+			returnJson := fmt.Sprintf(`{"Success": "true", "State": "Off"}`)
+			fmt.Fprintf(w, "%s\n", returnJson)
+		}
+	} else if State == libvirt.DOMAIN_SHUTOFF {
+		err = dom.Create()
+		if err != nil {
+			returnJson := fmt.Sprintf(`{"Success": "false"}`)
+			fmt.Fprintf(w, "%s\n", returnJson)
+			return
+		} else {
+			returnJson := fmt.Sprintf(`{"Success": "true", "State": "On"}`)
+			fmt.Fprintf(w, "%s\n", returnJson)
+		}
+	}
+
+}
+
 // Verifies the ownership of a user to a VPS
 func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	// Make sure all values exist
@@ -258,7 +362,7 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlPassword)
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -440,19 +544,160 @@ func genMac() string {
 
 // Retrieve statistics of the host
 func getStats(w http.ResponseWriter, r *http.Request) {
-	args := []string{"getStats.sh", "-a"}
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
-	cmd := exec.Command("bash", args...)
-	stdout, err := cmd.Output()
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
 
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
+	db, err := sql.Open("mysql", dbConnectString)
+	// if there is an error opening the connection, handle it
 	if err != nil {
-		l.Println(err.Error())
+		l.Println(err)
+		return
+	}
+	// defer the close till after the function has finished
+	// executing
+	defer db.Close()
+
+	// Connect to qemu-kvm
+	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
+	if err != nil {
+		l.Println("Failed to connect to qemu/kvm.")
+		return
+	} else {
+		l.Printf("Successfully connected to QEMU-KVM to query for domain statistics.\n")
+	}
+	defer conn.Close()
+
+	decoder := json.NewDecoder(r.Body)
+	var t = &domainStats{}
+	err = decoder.Decode(&t)
+
+	ownsVps := verifyOwnership(t.Token, t.DomainName, t.EmailAddress)
+	if ownsVps == false {
+		authJsonString := fmt.Sprintf(`{"Unauthorized": "true"}`)
+		fmt.Fprintf(w, "%s\n", authJsonString)
+		l.Printf("User %s owns VPS %s: %t\n", t.EmailAddress, t.DomainName, ownsVps)
+		return
+	}
+	l.Printf("User %s owns VPS %s: %t\n", t.EmailAddress, t.DomainName, ownsVps)
+
+	// Get power state
+	dom, err := conn.LookupDomainByName(t.DomainName)
+	if err != nil {
+		return
+	}
+	_, domState, err := dom.GetState()
+	l.Printf("Power state of %s: %d\n", t.DomainName, domState)
+
+	var powerState string
+	if domState == 1 {
+		powerState = "On"
+	} else if domState == 2 {
+		powerState = "Off"
+	}
+
+	// TODO This is broken right now. The array size ranges from either 0-12, or 0-3.
+	// TODO Why it does this is unknown. It seems to be entirely random.
+	// TODO Get memory stats
+	/*mem, err := dom.MemoryStats(6, 0)
+	if err != nil {
+		l.Println(err)
+	}
+	domMaxMem, err := dom.GetMaxMemory()
+	if err != nil {
+		l.Println(err)
 		return
 	}
 
-	l.Println(cmd)
-	l.Println(string(stdout))
-	fmt.Fprintf(w, string(stdout))
+	mem5Value := func() uint64 {
+		mem5Var := mem[5].Val
+		if err := recover(); err != nil {
+			l.Println(err)
+		}
+		return mem5Var
+	}
+
+	l.Printf("Available memory for domain %s: %d\n", t.DomainName, domMaxMem)
+	l.Printf("Unused memory for domain %s: %d\n", t.DomainName, mem5Value)
+	UsedMemoryKb := domMaxMem - mem5Value()
+	usedMemoryGb := uint64(UsedMemoryKb) / uint64(1000000)
+	l.Printf("Used memory in Kilobytes for domain %s: %d\n", t.DomainName, UsedMemoryKb)
+	l.Printf("Used memory in Gigabytes for domain %s: %d\n", t.DomainName, usedMemoryGb)*/
+	// TODO END
+
+	// Get CPU Stats
+	cpuStats1, err := dom.GetCPUStats(-1, 1, 0)
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	time.Sleep(2 * time.Second)
+	cpuStats2, err := dom.GetCPUStats(-1, 1, 0)
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	l.Println(cpuStats1[0].CpuTime)
+	cpuTime1 := cpuStats1[0].CpuTime
+	l.Println(cpuStats2[0].CpuTime)
+	cpuTime2 := cpuStats2[0].CpuTime
+	cpuUsage := (100 * (cpuTime2 - cpuTime1) / 2000000000)
+
+	l.Printf("CPU Usage: %d%%\n", cpuUsage)
+
+	// Get disk statistics
+	var diskPath string
+	diskLocationQueryString := fmt.Sprintf(`SELECT disk_path FROM domaininfo WHERE domain_name = '%s'`, t.DomainName)
+	rows, err := db.Query(diskLocationQueryString)
+	for rows.Next() {
+		err := rows.Scan(&diskPath)
+		if err != nil {
+			l.Println(err)
+			return
+		}
+	}
+
+	fileSizeMB, err := GetFileSize(diskPath)
+	if err != nil {
+		l.Println(err)
+		return
+	}
+	fileSizeGB := fileSizeMB / 1000
+
+	l.Printf("Disk path for domain %s: %s\n", t.DomainName, diskPath)
+	l.Printf("Disk size (MB) for domain %s: %d\n", t.DomainName, fileSizeMB)
+	l.Printf("Disk size (GB) for domain %s: %d\n", t.DomainName, fileSizeGB)
+
+	returnJson := fmt.Sprintf(`{"PowerState": "%s", "UsageCPU": "%d", "UsageDiskMB": "%d", "UsageDiskGB": "%d"}`, powerState, cpuUsage, fileSizeMB, fileSizeGB)
+	l.Printf("%s\n", returnJson)
+	fmt.Fprintf(w, "%s\n", returnJson)
+}
+
+type domainStats struct {
+	EmailAddress string `json:"Email"`
+	Token        string `json:"Token"`
+	DomainName   string `json:"DomainName"`
+}
+
+func GetFileSize(filename string) (uint64, error) {
+	args := []string{"-v", filename}
+	cmd := exec.Command("./getStats.sh", args...)
+	stdout, err := cmd.Output()
+	l.Printf("Stdout: %s\n", string(stdout))
+	parsedString := strings.TrimSuffix(string(stdout), "\n")
+	number, err := strconv.ParseUint(parsedString, 10, 64)
+	l.Printf("Parsed value: %d\n", number)
+	return number, err
 }
 
 // Retrieve the ram usage of the host
@@ -484,6 +729,7 @@ type configFile struct {
 	ListenPort      string `yaml:"listen_port"`
 	ListenAddress   string `yaml:"listen_address"`
 	SqlPassword     string `yaml:"sql_password"`
+	SqlAddress      string `yaml:"sql_address"`
 	Manufacturer    string `yaml:"vm_manufacturer"`
 	SqlUser         string `yaml:"sql_user"`
 	DomainBandwidth int    `yaml:"domain_bandwidth"`
@@ -515,7 +761,7 @@ type createDomainStruct struct {
 }
 
 type vncProxyValues struct {
-	UserToken string `json:"UserToken"`
+	UserToken string `json:"Token"`
 	VpsName   string `json:"VpsName"`
 	Email     string `json:"Email"`
 }
@@ -546,7 +792,7 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -1206,7 +1452,7 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 
 	// if there is an error opening the connection, handle it
@@ -1390,7 +1636,7 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 
 	// if there is an error opening the connection, handle it
@@ -1468,7 +1714,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 
 	// if there is an error opening the connection, handle it

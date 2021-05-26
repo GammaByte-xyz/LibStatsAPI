@@ -4,10 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Removed fatal/panic facilities if there is an error, as to keep the daemon running">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Added per-domain authentication">
       <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/auth/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kvm/getStats.sh" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/getStats.sh" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kvm/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -31,6 +32,7 @@
   </component>
   <component name="GOROOT" url="file://$USER_HOME$/go/go1.16.4" />
   <component name="Git.Settings">
+    <option name="PUSH_AUTO_UPDATE" value="true" />
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
   <component name="GitSEFilterConfiguration">
@@ -107,11 +109,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Added revert" />
-    <MESSAGE value="Removed os calls because it's broken af" />
-    <MESSAGE value="Added exit in the case of missing network" />
-    <MESSAGE value="Fixed it lol" />
-    <MESSAGE value="Fixed it again" />
     <MESSAGE value="Fixed it a 3rd time maybe" />
     <MESSAGE value="Added undefine API path" />
     <MESSAGE value="Added more verbose response messages" />
@@ -132,6 +129,11 @@
     <MESSAGE value="Added some auth input validation" />
     <MESSAGE value="Cleaned up some code" />
     <MESSAGE value="Removed fatal/panic facilities if there is an error, as to keep the daemon running" />
-    <option name="LAST_COMMIT_MESSAGE" value="Removed fatal/panic facilities if there is an error, as to keep the daemon running" />
+    <MESSAGE value="More sanity checks &amp; added resource checks" />
+    <MESSAGE value="Fixed some module issues" />
+    <MESSAGE value="Fixed simple println statement" />
+    <MESSAGE value="Added per-domain authentication for" />
+    <MESSAGE value="Added per-domain authentication" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added per-domain authentication" />
   </component>
 </project>
