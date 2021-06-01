@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -9,7 +10,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"strconv"
 	"strings"
-
 	//uuid "github.com/google/uuid"
 	"github.com/libvirt/libvirt-go"
 	"golang.org/x/net/context"
@@ -44,6 +44,7 @@ func handleRequests() {
 	http.HandleFunc("/api/vnc/proxy/create", vncProxy)
 	http.HandleFunc("/api/kvm/power/toggle", togglePower)
 	//http.HandleFunc("/api/auth/user/create", createUser)
+	http.DefaultClient.Timeout = time.Minute * 10
 
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -81,6 +82,7 @@ func main() {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
+		l.Printf("Error reading config file: %s\n", err.Error())
 		panic(err)
 	}
 	var ConfigFile configFile
@@ -97,7 +99,7 @@ func main() {
 
 	res, err := db.ExecContext(ctx, createDB)
 	if err != nil {
-		l.Fatalf("Error %s when creating lsapi DB\n", err)
+		l.Fatalf("Error %s when creating lsapi DB\n", err.Error())
 	}
 
 	db.Close()
@@ -112,33 +114,57 @@ func main() {
 
 	res, err = db.ExecContext(ctx, query)
 	if err != nil {
-		l.Fatalf("Error %s when creating users table\n", err)
+		l.Fatalf("Error %s when creating users table\n", err.Error())
 	}
 	rows, err := res.RowsAffected()
 	if err != nil {
-		l.Fatalf("Error %s when getting rows affected\n", err)
+		l.Fatalf("Error %s when getting rows affected\n", err.Error())
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
-	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, host_binding text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
 
 	res, err = db.ExecContext(ctx, query)
 	if err != nil {
-		l.Fatalf("Error %s when creating domaininfo table\n", err)
+		l.Fatalf("Error %s when creating domaininfo table\n", err.Error())
 	}
 
 	rows, err = res.RowsAffected()
 	if err != nil {
-		l.Fatalf("Error %s when getting rows affected\n", err)
+		l.Fatalf("Error %s when getting rows affected\n", err.Error())
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
 	err = db.Ping()
 	if err != nil {
-		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
+		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
+		panic(err)
+	} else {
+		l.Printf("Successfully connected to MySQL DB.\n")
+	}
+
+	query = `CREATE TABLE IF NOT EXISTS hostinfo(host_ip text, geolocation text, host_ip_public text, ram_gb int, cpu_cores int, linux_distro text, kernel_version text, hostname text, api_port int)`
+
+	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelfunc()
+
+	res, err = db.ExecContext(ctx, query)
+	if err != nil {
+		l.Printf("Error %s when creating domaininfo table\n", err.Error())
+	}
+
+	rows, err = res.RowsAffected()
+	if err != nil {
+		l.Printf("Error %s when getting rows affected\n", err.Error())
+	}
+	l.Printf("Rows affected when creating table hostinfo: %d\n", rows)
+
+	err = db.Ping()
+	if err != nil {
+		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
 		panic(err)
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
@@ -191,7 +217,7 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 	// Connect to libvirt
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	defer conn.Close()
@@ -218,11 +244,37 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 	// Generate the string that will be appended to /etc/gammabyte/lsapi/vnc.conf
 	vncAppend := fmt.Sprintf("%s: localhost:%s\n", vncToken, vncPort)
 
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Get hostname of server
+	cmd := exec.Command("/bin/hostname", "-f")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+	fqdn := "alpha1-host2"
+
+	// Send values to master node
+	VncAppendRequest := fmt.Sprintf("{\"VncAppendRequest\": \"%s: %s:%s\", \"MasterKey\": \"%s\"}", vncToken, fqdn, vncPort, ConfigFile.MasterKey)
+	masterResponse := notifyMaster(VncAppendRequest)
+	l.Printf("Master response: %s\n", masterResponse)
+
 	// Open the config file
 	f, err := os.OpenFile("/etc/gammabyte/lsapi/vnc/vnc.conf",
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	defer f.Close()
@@ -274,7 +326,7 @@ func togglePower(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	var ConfigFile configFile
@@ -309,7 +361,7 @@ func togglePower(w http.ResponseWriter, r *http.Request) {
 	// Connect to qemu-kvm
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Println("Failed to connect to qemu/kvm.")
+		l.Printf("Failed to connect to qemu/kvm. Error: %s\n", err.Error())
 		return
 	} else {
 		l.Printf("Successfully connected to QEMU-KVM to query for domain statistics.\n")
@@ -321,20 +373,24 @@ func togglePower(w http.ResponseWriter, r *http.Request) {
 	if State == libvirt.DOMAIN_RUNNING {
 		err = dom.Destroy()
 		if err != nil {
+			l.Println(err.Error())
 			returnJson := fmt.Sprintf(`{"Success": "false"}`)
 			fmt.Fprintf(w, "%s\n", returnJson)
 			return
 		} else {
+			l.Println(err.Error())
 			returnJson := fmt.Sprintf(`{"Success": "true", "State": "Off"}`)
 			fmt.Fprintf(w, "%s\n", returnJson)
 		}
 	} else if State == libvirt.DOMAIN_SHUTOFF {
 		err = dom.Create()
 		if err != nil {
+			l.Println(err.Error())
 			returnJson := fmt.Sprintf(`{"Success": "false"}`)
 			fmt.Fprintf(w, "%s\n", returnJson)
 			return
 		} else {
+			l.Println(err.Error())
 			returnJson := fmt.Sprintf(`{"Success": "true", "State": "On"}`)
 			fmt.Fprintf(w, "%s\n", returnJson)
 		}
@@ -362,11 +418,11 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlPassword)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return false
 	}
 	// defer the close till after the main function has finished
@@ -386,7 +442,7 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	case nil:
 		ownsVps = true
 	default:
-		l.Println(err)
+		l.Println(err.Error())
 	}
 
 	l.Printf("Owns VPS: %t", ownsVps)
@@ -534,7 +590,7 @@ func genMac() string {
 	buf := make([]byte, 6)
 	_, err := rand.Read(buf)
 	if err != nil {
-		l.Println("error:", err)
+		l.Println("error:", err.Error())
 		return ""
 	}
 	buf[0] = (buf[0] | 2) & 0xfe // Set local bit, ensure unicast address
@@ -561,7 +617,7 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	// defer the close till after the function has finished
@@ -571,7 +627,7 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	// Connect to qemu-kvm
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Println("Failed to connect to qemu/kvm.")
+		l.Printf("Failed to connect to qemu/kvm. Error: %s\n", err.Error())
 		return
 	} else {
 		l.Printf("Successfully connected to QEMU-KVM to query for domain statistics.\n")
@@ -594,6 +650,7 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	// Get power state
 	dom, err := conn.LookupDomainByName(t.DomainName)
 	if err != nil {
+		l.Printf("Error lookup up domain %s\n: %s\n", t.DomainName, err.Error())
 		return
 	}
 	_, domState, err := dom.GetState()
@@ -638,13 +695,13 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	// Get CPU Stats
 	cpuStats1, err := dom.GetCPUStats(-1, 1, 0)
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	time.Sleep(2 * time.Second)
 	cpuStats2, err := dom.GetCPUStats(-1, 1, 0)
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	l.Println(cpuStats1[0].CpuTime)
@@ -662,14 +719,14 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		err := rows.Scan(&diskPath)
 		if err != nil {
-			l.Println(err)
+			l.Println(err.Error())
 			return
 		}
 	}
 
 	fileSizeMB, err := GetFileSize(diskPath)
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	fileSizeGB := fileSizeMB / 1000
@@ -734,6 +791,8 @@ type configFile struct {
 	SqlUser         string `yaml:"sql_user"`
 	DomainBandwidth int    `yaml:"domain_bandwidth"`
 	Subnet          string `yaml:"virtual_network_subnet"`
+	MasterKey       string `yaml:"master_key"`
+	MasterIP        string `yaml:"master_ip"`
 }
 
 // Values parsed from JSON API input that can be used later
@@ -783,6 +842,42 @@ type usedResources struct {
 	storage int
 }
 
+func notifyMaster(message string) string {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	if err != nil {
+		l.Println(err.Error())
+		return "Error"
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	if ConfigFile.MasterKey == "" {
+		l.Println("No master node key in config file! Failed.")
+		return "Error"
+	}
+	if ConfigFile.MasterIP == "" {
+		l.Println("No master node IP in config file! Failed.")
+		return "Error"
+	}
+
+	masterUrl := fmt.Sprintf("http://%s:%s/api/auth/notify", ConfigFile.MasterIP, ConfigFile.ListenPort)
+
+	curlBody := fmt.Sprintf("'%s'", message)
+	curlCmd := []string{"-X", "POST", "-fSsL", "-d", curlBody, masterUrl}
+	cmd := exec.Command("curl", curlCmd...)
+	stdout, err := cmd.Output()
+	if err != nil {
+		l.Println(err.Error())
+		return err.Error()
+	}
+	l.Println(stdout)
+
+	return string(stdout)
+
+}
+
 // This validates that the user has purchased enough resources to provision a VM.
 func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool {
 
@@ -796,7 +891,7 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return false
 	}
 	// defer the close till after the main function has finished
@@ -815,14 +910,14 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 	for rows.Next() {
 		err = rows.Scan(&resourcesMax.vcpus, &resourcesMax.ram, &resourcesMax.storage)
 		if err != nil {
-			l.Println(err)
+			l.Println(err.Error())
 			return false
 		}
 		l.Println(resourcesMax)
 	}
 	err = rows.Err()
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return false
 	}
 
@@ -834,14 +929,14 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 	for rows.Next() {
 		err = rows.Scan(&resourcesUsed.vcpus, &resourcesUsed.ram, &resourcesUsed.storage)
 		if err != nil {
-			l.Println(err)
+			l.Println(err.Error())
 			return false
 		}
 		l.Println(resourcesUsed)
 	}
 	err = rows.Err()
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return false
 	}
 
@@ -902,7 +997,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	var ConfigFile configFile
@@ -1324,7 +1419,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	xmldoc, err := domcfg.Marshal()
 	if err != nil {
 		fmt.Fprintf(w, "Failed to parse generated XML buffer into readable output. Exiting.\n")
-		fmt.Fprintf(w, "Err --> %s\n", err)
+		fmt.Fprintf(w, "Err --> %s\n", err.Error())
 		os.Remove(qcow2Name)
 		return
 	}
@@ -1332,7 +1427,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 	// Connect to qemu-kvm
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
-		l.Printf("Failed! \nReason: %s\n", err)
+		l.Printf("Failed! \nReason: %s\n", err.Error())
 		l.Printf("Failed to connect to qemu.n\n")
 		os.Remove(qcow2Name)
 		os.Remove(qcow2Name)
@@ -1349,7 +1444,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		l.Printf("Failed to define new domain from XML. Exiting.\n")
-		l.Printf("Err --> %s\n", err)
+		l.Printf("Err --> %s\n", err.Error())
 		l.Printf("VPS MAC Address: %s\n", macAddr)
 		os.Remove(qcow2Name)
 

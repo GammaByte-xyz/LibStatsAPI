@@ -25,6 +25,7 @@ func handleRequests() {
 	http.HandleFunc("/api/auth/vm", authenticateDomain)
 	http.HandleFunc("/api/auth/login", userLogin)
 	http.HandleFunc("/api/auth/login/verify", verifyToken)
+	http.HandleFunc("/api/auth/notify", getNotification)
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
@@ -35,10 +36,10 @@ func handleRequests() {
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
-	//listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
+	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
 
 	// Listen on specified port
-	l.Fatal(http.ListenAndServe("0.0.0.0:8081", nil))
+	l.Fatal(http.ListenAndServe(listenAddr, nil))
 }
 
 // This is 1 GiB (gibibyte) in bytes
@@ -48,7 +49,6 @@ const (
 
 // Main function that always runs first
 func main() {
-
 	// Check to see if config file exists
 	if fileExists("/etc/gammabyte/lsapi/config.yml") {
 		l.Println("Config file found.")
@@ -97,7 +97,7 @@ func main() {
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
-	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, host_binding text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -269,6 +269,69 @@ func verifyToken(w http.ResponseWriter, r *http.Request) {
 
 }
 
+type getNotified struct {
+	MasterKey        string `json:"MasterKey"`
+	VncAppendRequest string `json:"VncAppendRequest"`
+}
+
+func getNotification(w http.ResponseWriter, r *http.Request) {
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+
+	if err != nil {
+		panic(err)
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Decode JSON & assign the json value struct to a variable we can use here
+	decoder := json.NewDecoder(r.Body)
+	var noti = &getNotified{}
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+
+	// Decode the struct internally
+	err = decoder.Decode(&noti)
+	if err != nil {
+		l.Printf("Error decoding JSON: %s\n", err.Error())
+		return
+	}
+
+	if noti.MasterKey == "" {
+		fmt.Fprintf(w, "401 Unauthorized")
+		l.Println("401 unauthorized")
+		return
+	}
+
+	l.Println("Request recieved!")
+	l.Println(noti.VncAppendRequest)
+	// Open the config file
+	f, err := os.OpenFile("/etc/gammabyte/lsapi/vnc/vnc.conf",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0777)
+	if err != nil {
+		l.Println(err)
+		fmt.Fprintf(w, "Error opening file: %s\n", err)
+		return
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(noti.VncAppendRequest); err != nil {
+		l.Printf("Error writing string to end of file: %s\n", err)
+		return
+	}
+	successString := fmt.Sprintf(`{"Success": "true"}`)
+	fmt.Fprintf(w, "%s\n", successString)
+
+}
 func getUserDomains(w http.ResponseWriter, r *http.Request) {
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -301,8 +364,13 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if user.Token == "" {
+		l.Printf("Token: %s\n", user.Token)
+		return
+	}
+
 	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	// if there is an error opening the connection, handle it
 	if err != nil {
@@ -317,6 +385,7 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 	dbVars, err := db.Query(query)
 	if err != nil {
 		l.Println("Could not get domains from MySQL.")
+		l.Println(dbVars)
 	}
 
 	l.Printf("All LibStatsAPI Managed VMs:\n")
