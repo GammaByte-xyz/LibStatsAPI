@@ -126,25 +126,25 @@ func main() {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
 
-	query = `CREATE TABLE IF NOT EXISTS hostinfo(host_ip text, geolocation text, host_ip_public text, ram_gb int, cpu_cores int, linux_distro text, kernel_version text, hostname text, api_port int)`
+	query = `CREATE TABLE IF NOT EXISTS hostinfo(host_ip text, geolocation text, host_ip_public text, ram_gb int, cpu_cores int, linux_distro text, kernel_version text, hostname text, api_port int, kvm_api_port int)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
 
 	res, err = db.ExecContext(ctx, query)
 	if err != nil {
-		l.Printf("Error %s when creating domaininfo table\n", err)
+		l.Printf("Error %s when creating domaininfo table\n", err.Error())
 	}
 
 	rows, err = res.RowsAffected()
 	if err != nil {
-		l.Printf("Error %s when getting rows affected\n", err)
+		l.Printf("Error %s when getting rows affected\n", err.Error())
 	}
 	l.Printf("Rows affected when creating table hostinfo: %d\n", rows)
 
 	err = db.Ping()
 	if err != nil {
-		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
+		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
 		panic(err)
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
@@ -171,7 +171,7 @@ func main() {
 	if err != nil {
 		l.Printf("Error getting host info: %s\n", err.Error())
 	}
-	query = fmt.Sprintf(`INSERT INTO hostinfo (host_ip, geolocation, host_ip_public, ram_gb, cpu_cores, linux_distro, kernel_version, hostname, api_port) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d')`, hostIP, geolocation, hostIPWAN, ramGb, cpuCores, distro, kernelVersion, hostname, 4234)
+	query = fmt.Sprintf(`INSERT INTO hostinfo (host_ip, geolocation, host_ip_public, ram_gb, cpu_cores, linux_distro, kernel_version, hostname, api_port, kvm_api_port) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s')`, hostIP, geolocation, hostIPWAN, ramGb, cpuCores, distro, kernelVersion, hostname, 4234, ConfigFile.ListenPort)
 	res, err = db.Exec(query)
 	if err != nil {
 		l.Printf("Error inserting host info: %s\n", err.Error())
@@ -222,7 +222,7 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 func GetOutboundIP() net.IP {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(err.Error())
 	}
 	defer conn.Close()
 
@@ -291,7 +291,7 @@ func getHostInfo() (string, string, string, string, string, string, string, stri
 func ReadOSRelease(configfile string) map[string]string {
 	cfg, err := ini.Load(configfile)
 	if err != nil {
-		log.Fatal("Fail to read file: ", err)
+		log.Fatal("Fail to read file: ", err.Error())
 	}
 
 	ConfigParams := make(map[string]string)

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/Showmax/go-fqdn"
 	_ "github.com/go-sql-driver/mysql"
 	"strconv"
 	"strings"
@@ -146,7 +147,7 @@ func main() {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
 
-	query = `CREATE TABLE IF NOT EXISTS hostinfo(host_ip text, geolocation text, host_ip_public text, ram_gb int, cpu_cores int, linux_distro text, kernel_version text, hostname text, api_port int)`
+	query = `CREATE TABLE IF NOT EXISTS hostinfo(host_ip text, geolocation text, host_ip_public text, ram_gb int, cpu_cores int, linux_distro text, kernel_version text, hostname text, api_port int, kvm_api_port int)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -1666,10 +1667,13 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 		setIP(network, macAddr, domainName, qcow2Name, userEmail, userFullName, userName, userToken, domainRam, domainCpus, domainStorage)
 	}
 
+	// Get hostname
+	hostname, err := fqdn.FqdnHostname()
+
 	// Get the current date/time
 	dt := time.Now()
 	// Generate the insert string
-	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ram, vcpus, storage, ip_address, disk_path, time_created, user_email, user_full_name, username, user_token) VALUES ('%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, domainRam, domainCpus, domainStorage, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName, userToken)
+	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ram, vcpus, storage, ip_address, disk_path, time_created, user_email, user_full_name, username, user_token, host_binding) VALUES ('%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, domainRam, domainCpus, domainStorage, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName, userToken, hostname)
 	l.Printf("MySQL ==> %s\n\n", insertData)
 
 	res, err = db.Exec(insertData)

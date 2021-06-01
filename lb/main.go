@@ -10,11 +10,9 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
-	"io/ioutil"
+	ioutil "io/ioutil"
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -123,7 +121,7 @@ func main() {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
 
-	query = `CREATE TABLE IF NOT EXISTS hostinfo(host_ip text, geolocation text, host_ip_public text, ram_gb int, cpu_cores int, linux_distro text, kernel_version text, hostname text, api_port int)`
+	query = `CREATE TABLE IF NOT EXISTS hostinfo(host_ip text, geolocation text, host_ip_public text, ram_gb int, cpu_cores int, linux_distro text, kernel_version text, hostname text, api_port int, kvm_api_port int)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -298,8 +296,14 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	r.Header.Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 
+	// Same request body is being stored because after reading r.Body, it can't be read again:
+	bodyBytes, _ := ioutil.ReadAll(r.Body)
+	r.Body.Close()
+	var reqBodyStored = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+	var reqBodyStored2 = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	// Create decoder & define var rpv
-	decoder := json.NewDecoder(r.Body)
+	decoder := json.NewDecoder(reqBodyStored2)
 	var rpv = &requestProxyValue{}
 
 	// Define var dbvar for use later
@@ -388,7 +392,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 		dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 		db, err = sql.Open("mysql", dbConnectString)
 
-		result, err := db.Query("SELECT api_port FROM hostinfo WHERE hostname = ?", hostChosen)
+		result, err := db.Query("SELECT kvm_api_port FROM hostinfo WHERE hostname = ?", hostChosen)
 		if err != nil {
 			l.Printf("Error: %s\n", err.Error())
 			l.Printf("Error quering DB for host port for host %s!", hostChosen)
@@ -402,19 +406,18 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		httpUrl := fmt.Sprintf("http://%s:%s/%s", hostChosen, ConfigFile.ListenPort, proxyURI)
-		origin, err := url.Parse(httpUrl)
-		director := func(req *http.Request) {
-			req.Header.Add("X-Forwarded-Host", req.Host)
-			req.Header.Add("X-Origin_Host", origin.Host)
-			req.URL.Scheme = "http"
-			req.URL.Host = origin.Host
-			req.Method = "POST"
-			req.Body = r.Body
+		httpUrl := fmt.Sprintf("http://%s:%s/%s", hostChosen, dbvar.hostPort, proxyURI)
+		returnValues, err := http.Post(httpUrl, "application/json", reqBodyStored)
+		if err != nil {
+			fmt.Fprintf(w, "Error: %s\n", err.Error())
+			return
 		}
-		proxy := &httputil.ReverseProxy{Director: director}
-		proxy.ServeHTTP(w, r)
-
+		b, err := ioutil.ReadAll(returnValues.Body)
+		if err != nil {
+			fmt.Fprintf(w, "Error: %s\n", err.Error())
+			return
+		}
+		fmt.Fprintf(w, "%s\n", string(b))
 		return
 	}
 
@@ -422,7 +425,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	if err != nil {
-		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
+		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
 		panic(err)
 	}
 	queryString := fmt.Sprintf("SELECT host_binding FROM domaininfo WHERE domain_name = '%s'", rpv.DomainName)
@@ -440,7 +443,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	}
 	l.Printf("Domain %s is bound to host %s!", rpv.DomainName, dbvar.hostBinding)
 
-	queryString = fmt.Sprintf("SELECT api_port FROM hostinfo WHERE host = '%s'", dbvar.hostBinding)
+	queryString = fmt.Sprintf("SELECT kvm_api_port FROM hostinfo WHERE hostname = '%s'", dbvar.hostBinding)
 	result, err = db.Query(queryString)
 	if err != nil {
 		l.Printf("Error querying DB for host port for host %s!", dbvar.hostBinding)

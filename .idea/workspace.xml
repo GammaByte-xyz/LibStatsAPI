@@ -4,18 +4,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Lots of new functionality. Too much to explain.">
-      <change afterPath="$PROJECT_DIR$/conf.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/host/main.go" afterDir="false" />
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="There's too much here for me to summarize. I don't even remember most of it.">
       <change afterPath="$PROJECT_DIR$/host/reference.go" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/lb/hosts.yml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/lb/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/auth/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/main.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kvm/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kvm/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/go.sum" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/host/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/host/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kvm/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lb/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/lb/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -159,7 +155,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Added undefine API path" />
     <MESSAGE value="Added more verbose response messages" />
     <MESSAGE value="Added MariaDB integration to store domain data permanently" />
     <MESSAGE value="Added some various fixes" />
@@ -184,7 +179,8 @@
     <MESSAGE value="Added per-domain authentication for" />
     <MESSAGE value="Added per-domain authentication" />
     <MESSAGE value="Lots of new functionality. Too much to explain." />
-    <option name="LAST_COMMIT_MESSAGE" value="Lots of new functionality. Too much to explain." />
+    <MESSAGE value="There's too much here for me to summarize. I don't even remember most of it." />
+    <option name="LAST_COMMIT_MESSAGE" value="There's too much here for me to summarize. I don't even remember most of it." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
