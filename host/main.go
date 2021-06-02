@@ -26,11 +26,14 @@ import (
 	"time"
 )
 
-// Set logging facility
-var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-Host]")
-var logFile, logfileErr = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
-var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-var l = log.New(writeLog, "[LibStatsAPI-Host] ", 2)
+// Set global variables
+var (
+	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	logFile, err2   = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	db              *sql.DB
+)
 
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
@@ -114,7 +117,9 @@ func main() {
 
 	dbConnectString = fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err = sql.Open("mysql", dbConnectString)
-
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
 	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, max_vcpus int, max_ram int, max_block_storage int, used_vcpus int, used_ram int, used_block_storage int, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
 
 	res, err = db.ExecContext(ctx, query)

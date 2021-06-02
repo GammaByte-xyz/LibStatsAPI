@@ -4,12 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Fixed http proxy issues">
-      <change afterPath="$PROJECT_DIR$/host/reference.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/lb/hosts.yml" afterDir="false" />
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Changed syslog naming conventions">
       <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/auth/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/conf.go" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/host/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/host/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kvm/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lb/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/lb/main.go" afterDir="false" />
@@ -156,8 +155,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Added MariaDB integration to store domain data permanently" />
-    <MESSAGE value="Added some various fixes" />
     <MESSAGE value="Added requirement for YAML config file to store secrets" />
     <MESSAGE value="Added requirement for YAML config file to store secrets &amp; options" />
     <MESSAGE value="Configured removal of DB row upon removal of domain via API path" />
@@ -181,7 +178,9 @@
     <MESSAGE value="Lots of new functionality. Too much to explain." />
     <MESSAGE value="There's too much here for me to summarize. I don't even remember most of it." />
     <MESSAGE value="Fixed http proxy issues" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed http proxy issues" />
+    <MESSAGE value="Implemented rsyslog capabilities" />
+    <MESSAGE value="Changed syslog naming conventions" />
+    <option name="LAST_COMMIT_MESSAGE" value="Changed syslog naming conventions" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

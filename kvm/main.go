@@ -28,11 +28,14 @@ import (
 	"time"
 )
 
-// Set logging facility
-var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-KVM]")
-var logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
-var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-var l = log.New(writeLog, "[LibStatsAPI-KVM] ", 2)
+// Set global variables
+var (
+	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	logFile, err    = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	db              *sql.DB
+)
 
 func getSyslogServer() string {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -117,8 +120,11 @@ func main() {
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-
+	db, err = sql.Open("mysql", dbConnectString)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		panic(err.Error())
+	}
 	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
@@ -441,20 +447,11 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err.Error())
-		return false
-	}
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
 
 	// Execute the query checking for the user binding to the VPS
 	checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)
@@ -639,17 +636,6 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	r.Header.Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
-
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err.Error())
-		return
-	}
-	// defer the close till after the function has finished
-	// executing
-	defer db.Close()
 
 	// Connect to qemu-kvm
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
@@ -914,17 +900,6 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 	yamlConfig, err := ioutil.ReadFile(filename)
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err.Error())
-		return false
-	}
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
 
 	// Get struct Values
 	resourcesMax := maxResources{}
@@ -1574,20 +1549,6 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err)
-		return ""
-	}
-
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
-
 	query := `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1761,20 +1722,6 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err)
-		return
-	}
-
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
-
 	conn, err := libvirt.NewConnect("qemu:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
 		l.Println("failed to connect to qemu")
@@ -1838,20 +1785,6 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err)
-		return
-	}
-
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
 
 	// Create a new decoder
 	decoder := json.NewDecoder(r.Body)

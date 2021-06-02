@@ -21,11 +21,14 @@ import (
 	"time"
 )
 
-// Set logging facility
-var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-Auth]")
-var logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
-var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-var l = log.New(writeLog, "[LibStatsAPI-Auth] ", 2)
+// Set global variables
+var (
+	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	logFile, err    = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	db              *sql.DB
+)
 
 func getSyslogServer() string {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -100,7 +103,7 @@ func main() {
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
+	db, err = sql.Open("mysql", dbConnectString)
 
 	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
 
@@ -263,18 +266,6 @@ func verifyToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err)
-		return
-	}
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
-
 	query := fmt.Sprintf("SELECT email_address FROM users WHERE user_token = '%s'", verify.Token)
 	rows, err := db.Query(query)
 
@@ -399,17 +390,6 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		panic(err.Error())
-	}
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
-
 	query := fmt.Sprintf(`SELECT JSON_ARRAYAGG(JSON_OBJECT('domain_name', domain_name)) FROM domaininfo WHERE user_token = '%s'`, user.Token)
 
 	dbVars, err := db.Query(query)
@@ -521,18 +501,6 @@ func userLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err)
-		return
-	}
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
-
 	// Compare password hashes
 	query := fmt.Sprintf("SELECT password FROM users WHERE email_address = '%s'", login.Email)
 	rows, err := db.Query(query)
@@ -629,18 +597,6 @@ func authenticateDomain(w http.ResponseWriter, r *http.Request) {
 	r.Header.Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err)
-		return
-	}
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
-
 	ownsDomain := verifyOwnership(vps.UserToken, vps.DomainName, vps.UserEmail)
 	if ownsDomain == false {
 		l.Printf("User with email %s has requested unauthorized access to %s!\n", vps.UserEmail, vps.DomainName)
@@ -730,17 +686,6 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		panic(err.Error())
-	}
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
-
 	checkQueryEmail := fmt.Sprintf(`SELECT email_address FROM users WHERE email_address='%s'`, user.Email)
 	checkQueryUserName := fmt.Sprintf(`SELECT username FROM users WHERE username='%s'`, user.UserName)
 	// Check if user exists already
@@ -825,20 +770,11 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	// Parse the config file
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
-	// Connect to MariaDB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	// if there is an error opening the connection, handle it
-	if err != nil {
-		l.Println(err)
-		return false
-	}
-	// defer the close till after the main function has finished
-	// executing
-	defer db.Close()
 
 	// Execute the query checking for the user binding to the VPS
 	checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)

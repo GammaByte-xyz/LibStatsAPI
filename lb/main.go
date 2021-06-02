@@ -20,14 +20,14 @@ import (
 	"time"
 )
 
-// Set logging facility
-var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
-var logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
-var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-var l = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
-
-// Set global SQL connection
-var db *sql.DB
+// Set global variables
+var (
+	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	logFile, err    = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	db              *sql.DB
+)
 
 func getSyslogServer() string {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -47,15 +47,21 @@ func handleRequests() {
 	http.HandleFunc("/api/kvm", proxyRequestsKvm)
 	http.HandleFunc("/api/vnc", proxyRequestsVnc)
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, err := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		panic(err.Error())
+	}
 	yamlConfig, err := ioutil.ReadFile(filename)
-
 	if err != nil {
 		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		panic(err.Error())
+	}
 	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
 
 	// Listen on specified port
@@ -68,16 +74,23 @@ func main() {
 		l.Println("Config file found.")
 	} else {
 		l.Println("Config file '/etc/gammabyte/lsapi/config.yml' not found!")
+		panic("Config file not found.")
 	}
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, err := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	if err != nil {
+		l.Fatalf("Error: %s\n", err.Error())
+	}
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
 		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+	if err != nil {
+		l.Fatalf("Error: %s\n", err.Error())
+	}
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -92,19 +105,25 @@ func main() {
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-
+	db, err = sql.Open("mysql", dbConnectString)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		panic(err.Error())
+	}
 	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
 
 	res, err := db.Exec(createDB)
 	if err != nil {
-		l.Printf("Error %s when creating lsapi DB\n", err)
+		l.Printf("Error %s when creating lsapi DB\n", err.Error())
+		panic(err.Error())
 	}
-
-	db.Close()
 
 	dbConnectString = fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err = sql.Open("mysql", dbConnectString)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		panic(err.Error())
+	}
 
 	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, max_vcpus int, max_ram int, max_block_storage int, used_vcpus int, used_ram int, used_block_storage int, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
 
@@ -175,12 +194,8 @@ func main() {
 	if err != nil {
 		l.Printf("Error: %s\n", err.Error())
 	}
-	l.Printf("Hosts: %s\n", hostnames)
-	l.Printf("Host IPs: %s\n", hostIPs)
 
 	var i = 0
-	var hostStats []string
-	var hostStatsRam []int
 	hostnames, hostIPs, err = parseHostFile()
 	if err != nil {
 		l.Printf("Error: %s\n", err.Error())
@@ -189,41 +204,8 @@ func main() {
 	l.Printf("Hosts: %s\n", hostnames)
 	l.Printf("Host IPs: %s\n", hostIPs)
 	for i = range hostnames {
-		l.Printf("Checking host %s\n...", hostnames[i])
-		//hostURL := fmt.Sprintf("http://%s/api/host")
-		//resp, err := http.Get(hostURL)
-		if err != nil {
-			l.Printf("Error getting host stats: %s\n", err.Error())
-			return
-		}
-		//defer resp.Body.Close()
-		//decoder := json.NewDecoder(resp.Body)
-		var respBody = &hostStatsRespBody{}
-		respBody.RamUsage = 4 + i
-		respBody.CpuUsage = 0
-		//err = decoder.Decode(&respBody)
-		if err != nil {
-			l.Println(err.Error())
-			return
-		}
-		hostStatsJson := fmt.Sprintf(`{"Hostname": "%s", "HostRamUsage": "%d", "HostCpuUsage": "%s"}`, hostnames[i], respBody.RamUsage, respBody.CpuUsage)
-		hostStats = append(hostStats, hostStatsJson)
-		hostStatsRam = append(hostStatsRam, respBody.RamUsage)
+		l.Printf("%s\n", hostnames[i])
 	}
-	i = 0
-	//minRamHost, err := Min(hostStatsRam)
-	minRamHost := 4
-	if err != nil {
-		l.Printf("Error getting host with minimum RAM usage: %s\n", err.Error())
-	}
-	index := Search(len(hostStatsRam), func(i int) bool { return hostStatsRam[i] >= minRamHost })
-	if i < len(hostStatsRam) && hostStatsRam[i] == minRamHost {
-		l.Printf("Found %d at index %d in %v\n", minRamHost, i, hostStatsRam)
-	} else if i > len(hostStatsRam) && hostStatsRam[i] != minRamHost {
-		l.Printf("%d not found in %v\n", minRamHost, hostStatsRam)
-	}
-	l.Println(index)
-
 	handleRequests()
 
 }
@@ -309,6 +291,7 @@ func proxyRequestsAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	l.Printf("Request made to %s!", proxyURI)
 
+	r.Body.Close()
 }
 
 func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
@@ -406,6 +389,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 		minRamHost, err := Min(hostStatsRam)
 		if err != nil {
 			l.Printf("Error getting host with minimum RAM usage: %s\n", err.Error())
+			r.Body.Close()
 		}
 		index := Search(len(hostStatsRam), func(i int) bool { return hostStatsRam[i] >= minRamHost })
 		if i < len(hostStatsRam) && hostStatsRam[i] == minRamHost {
@@ -416,13 +400,11 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 		hostChosen := hostnames[index]
 		l.Printf("Host chosen: %s\n", hostChosen)
 
-		dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-		db, err = sql.Open("mysql", dbConnectString)
-
 		result, err := db.Query("SELECT kvm_api_port FROM hostinfo WHERE hostname = ?", hostChosen)
 		if err != nil {
 			l.Printf("Error: %s\n", err.Error())
 			l.Printf("Error quering DB for host port for host %s!", hostChosen)
+			r.Body.Close()
 			return
 		}
 		for result.Next() {
@@ -430,6 +412,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 		}
 		if dbvar.hostPort == "" {
 			l.Printf("Error: Host %s API has no port binding!", dbvar.hostBinding)
+			r.Body.Close()
 			return
 		}
 
@@ -437,29 +420,32 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 		returnValues, err := http.Post(httpUrl, "application/json", reqBodyStored)
 		if err != nil {
 			fmt.Fprintf(w, "Error: %s\n", err.Error())
+			returnValues.Body.Close()
+			r.Body.Close()
 			return
 		}
 		b, err := ioutil.ReadAll(returnValues.Body)
 		if err != nil {
+			returnValues.Body.Close()
+			r.Body.Close()
 			fmt.Fprintf(w, "Error: %s\n", err.Error())
 			return
 		}
 		fmt.Fprintf(w, "%s\n", string(b))
+
+		returnValues.Body.Close()
+		r.Body.Close()
+
 		return
 	}
 
 	// Get values from DB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
-	if err != nil {
-		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
-		panic(err.Error())
-	}
 	queryString := fmt.Sprintf("SELECT host_binding FROM domaininfo WHERE domain_name = '%s'", rpv.DomainName)
 	result, err := db.Query(queryString)
 	if err != nil {
 		l.Printf("Error querying DB for host binding for VM %s!", rpv.DomainName)
 		l.Printf("Error: %s\n", err.Error())
+		r.Body.Close()
 		return
 	}
 	for result.Next() {
@@ -467,6 +453,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	}
 	if dbvar.hostBinding == "" {
 		l.Printf("Error: Domain %s has no host binding!", rpv.DomainName)
+		r.Body.Close()
 		return
 	}
 	l.Printf("Domain %s is bound to host %s!", rpv.DomainName, dbvar.hostBinding)
@@ -475,6 +462,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	result, err = db.Query(queryString)
 	if err != nil {
 		l.Printf("Error querying DB for port on host %s!", dbvar.hostBinding)
+		r.Body.Close()
 		return
 	}
 	for result.Next() {
@@ -482,6 +470,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	}
 	if dbvar.hostPort == "" {
 		l.Printf("Error: Host %s API has no port binding!", dbvar.hostBinding)
+		r.Body.Close()
 		return
 	}
 	l.Printf("Host %s API has port binding %s!", dbvar.hostBinding, dbvar.hostPort)
@@ -490,11 +479,15 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	httpUrl := fmt.Sprintf("http://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
 	returnValues, err := http.Post(httpUrl, "application/json", reqBodyStored)
 	if err != nil {
+		r.Body.Close()
 		l.Printf("Error: %s\n", err.Error())
+		return
 	}
 	b, err := ioutil.ReadAll(returnValues.Body)
 	if err != nil {
 		l.Printf("Error: %s\n", err.Error())
+		r.Body.Close()
+		return
 	}
 	fmt.Fprintf(w, "%s\n", string(b))
 }
@@ -517,6 +510,7 @@ func proxyRequestsVnc(w http.ResponseWriter, r *http.Request) {
 	// Decode the struct internally
 	err := decoder.Decode(&rpv)
 	if err != nil {
+		r.Body.Close()
 		l.Println(err.Error())
 		return
 	}
@@ -585,14 +579,6 @@ func Min(values []int) (min int, e error) {
 	}
 
 	return min, nil
-}
-func indexOf(word int, data []int) int {
-	for k, v := range data {
-		if word == v {
-			return k
-		}
-	}
-	return -1
 }
 
 func Search(n int, f func(int) bool) int {
