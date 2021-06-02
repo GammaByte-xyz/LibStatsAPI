@@ -10,8 +10,10 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
+	"io"
 	ioutil "io/ioutil"
 	"log"
+	"log/syslog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,10 +21,26 @@ import (
 )
 
 // Set logging facility
-var l = log.New(os.Stdout, "[LibStatsAPI-ALB] ", 2)
+var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+var logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+var l = log.New(writeLog, "[LibStatsAPI-foo] ", 2)
 
 // Set global SQL connection
 var db *sql.DB
+
+func getSyslogServer() string {
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	if err != nil {
+		l.Fatalf("Error: %s\n", err.Error())
+		return "localhost:514"
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	return ConfigFile.SyslogAddress
+}
 
 func handleRequests() {
 	http.HandleFunc("/api/auth", proxyRequestsAuth)
@@ -56,13 +74,21 @@ func main() {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
+
+	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		l.Fatalf("Error: %s\n", err.Error())
+	}
+	writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+	l = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
@@ -214,6 +240,7 @@ type configFile struct {
 	Subnet          string `yaml:"virtual_network_subnet"`
 	MasterKey       string `yaml:"master_key"`
 	MasterIP        string `yaml:"master_ip"`
+	SyslogAddress   string `yaml:"syslog_server"`
 }
 
 type requestProxyValue struct {
@@ -422,7 +449,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get values from DB
-	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
+	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err := sql.Open("mysql", dbConnectString)
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
@@ -432,6 +459,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	result, err := db.Query(queryString)
 	if err != nil {
 		l.Printf("Error querying DB for host binding for VM %s!", rpv.DomainName)
+		l.Printf("Error: %s\n", err.Error())
 		return
 	}
 	for result.Next() {
@@ -446,7 +474,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	queryString = fmt.Sprintf("SELECT kvm_api_port FROM hostinfo WHERE hostname = '%s'", dbvar.hostBinding)
 	result, err = db.Query(queryString)
 	if err != nil {
-		l.Printf("Error querying DB for host port for host %s!", dbvar.hostBinding)
+		l.Printf("Error querying DB for port on host %s!", dbvar.hostBinding)
 		return
 	}
 	for result.Next() {
@@ -459,41 +487,16 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	l.Printf("Host %s API has port binding %s!", dbvar.hostBinding, dbvar.hostPort)
 
 	// Setup the forward proxy
-	httpClient := http.Client{}
-	body, err := ioutil.ReadAll(r.Body)
+	httpUrl := fmt.Sprintf("http://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
+	returnValues, err := http.Post(httpUrl, "application/json", reqBodyStored)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		l.Printf("Error reading request body: %s\n", err.Error())
-		return
+		l.Printf("Error: %s\n", err.Error())
 	}
-	r.Body = ioutil.NopCloser(bytes.NewReader(body))
-	target := fmt.Sprintf("http://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
-	proxyReq, err := http.NewRequest(r.Method, target, bytes.NewReader(body))
-	// We may want to filter some headers, otherwise we could just use a shallow copy
-	// proxyReq.Header = req.Header
-	proxyReq.Header = make(http.Header)
-	for h, val := range r.Header {
-		proxyReq.Header[h] = val
-	}
-	resp, err := httpClient.Do(proxyReq)
+	b, err := ioutil.ReadAll(returnValues.Body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		l.Printf("Bad gateway: %s\n", err.Error())
-		return
+		l.Printf("Error: %s\n", err.Error())
 	}
-	defer resp.Body.Close()
-
-	/*
-		target := fmt.Sprintf("http://%s%s", dbvar.hostBinding, proxyURI)
-		URL, _ := url.Parse(target)
-		proxy := httputil.NewSingleHostReverseProxy(URL)
-		r.URL.Host = URL.Host
-		r.URL.Scheme = URL.Scheme
-		r.Header.Set("X-Forwarded-Host", r.Header.Get("Host"))
-
-		r.Host = URL.Host
-
-		proxy.ServeHTTP(w, r)*/
+	fmt.Fprintf(w, "%s\n", string(b))
 }
 
 func proxyRequestsVnc(w http.ResponseWriter, r *http.Request) {

@@ -12,8 +12,10 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
+	"io"
 	"io/ioutil"
 	"log"
+	"log/syslog"
 	"net"
 	"net/http"
 	"os"
@@ -24,12 +26,31 @@ import (
 	"time"
 )
 
+// Set logging facility
+var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+var logFile, logfileErr = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+var l = log.New(writeLog, "[LibStatsAPI-foo] ", 2)
+
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
 	if os.IsNotExist(err) {
 		return false
 	}
 	return !info.IsDir()
+}
+
+func getSyslogServer() string {
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	if err != nil {
+		l.Fatalf("Error: %s\n", err.Error())
+		return "localhost:514"
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	return ConfigFile.SyslogAddress
 }
 
 type configFile struct {
@@ -44,6 +65,7 @@ type configFile struct {
 	Subnet          string `yaml:"virtual_network_subnet"`
 	MasterKey       string `yaml:"master_key"`
 	MasterIP        string `yaml:"master_ip"`
+	SyslogAddress   string `yaml:"syslog_server"`
 }
 
 func main() {
@@ -62,6 +84,14 @@ func main() {
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		l.Fatalf("Error: %s\n", err.Error())
+	}
+	writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+	l = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -179,9 +209,6 @@ func main() {
 	}
 	handleRequests()
 }
-
-// Set logging facility
-var l = log.New(os.Stdout, "[LibStatsAPI-Host] ", 2)
 
 func handleRequests() {
 	http.HandleFunc("/api/host/stats", getStats)

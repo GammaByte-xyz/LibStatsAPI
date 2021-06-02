@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"github.com/Showmax/go-fqdn"
 	_ "github.com/go-sql-driver/mysql"
+	"io"
+	"log/syslog"
 	"strconv"
 	"strings"
 	//uuid "github.com/google/uuid"
@@ -27,7 +29,23 @@ import (
 )
 
 // Set logging facility
-var l = log.New(os.Stdout, "[LibStatsAPI] ", 2)
+var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+var logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+var l = log.New(writeLog, "[LibStatsAPI-foo] ", 2)
+
+func getSyslogServer() string {
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	if err != nil {
+		l.Fatalf("Error: %s\n", err.Error())
+		return "localhost:514"
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	return ConfigFile.SyslogAddress
+}
 
 // Verify functionality of API with the "/" URI path
 func homePage(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +106,14 @@ func main() {
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		l.Fatalf("Error: %s\n", err.Error())
+	}
+	writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
+	l = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
@@ -794,6 +820,7 @@ type configFile struct {
 	Subnet          string `yaml:"virtual_network_subnet"`
 	MasterKey       string `yaml:"master_key"`
 	MasterIP        string `yaml:"master_ip"`
+	SyslogAddress   string `yaml:"syslog_server"`
 }
 
 // Values parsed from JSON API input that can be used later
