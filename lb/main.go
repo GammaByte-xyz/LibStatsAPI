@@ -24,7 +24,7 @@ import (
 var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
 var logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-var l = log.New(writeLog, "[LibStatsAPI-foo] ", 2)
+var l = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
 
 // Set global SQL connection
 var db *sql.DB
@@ -51,7 +51,7 @@ func handleRequests() {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -136,13 +136,13 @@ func main() {
 
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
-		panic(err)
+		panic(err.Error())
 	}
 
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
-		panic(err)
+		panic(err.Error())
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
@@ -166,7 +166,7 @@ func main() {
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
-		panic(err)
+		panic(err.Error())
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
@@ -347,7 +347,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -453,7 +453,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	db, err := sql.Open("mysql", dbConnectString)
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
-		panic(err)
+		panic(err.Error())
 	}
 	queryString := fmt.Sprintf("SELECT host_binding FROM domaininfo WHERE domain_name = '%s'", rpv.DomainName)
 	result, err := db.Query(queryString)

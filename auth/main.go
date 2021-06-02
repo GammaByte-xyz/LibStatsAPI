@@ -22,10 +22,10 @@ import (
 )
 
 // Set logging facility
-var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-Auth]")
 var logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-var l = log.New(writeLog, "[LibStatsAPI-foo] ", 2)
+var l = log.New(writeLog, "[LibStatsAPI-Auth] ", 2)
 
 func getSyslogServer() string {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -52,7 +52,7 @@ func handleRequests() {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -82,7 +82,7 @@ func main() {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -144,13 +144,13 @@ func main() {
 
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
-		panic(err)
+		panic(err.Error())
 	}
 
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
-		panic(err)
+		panic(err.Error())
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
@@ -310,7 +310,7 @@ func getNotification(w http.ResponseWriter, r *http.Request) {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -368,7 +368,7 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -685,7 +685,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)

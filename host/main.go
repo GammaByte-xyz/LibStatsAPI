@@ -27,10 +27,10 @@ import (
 )
 
 // Set logging facility
-var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+var remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-Host]")
 var logFile, logfileErr = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 var writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-var l = log.New(writeLog, "[LibStatsAPI-foo] ", 2)
+var l = log.New(writeLog, "[LibStatsAPI-Host] ", 2)
 
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
@@ -80,18 +80,18 @@ func main() {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
-		panic(err)
+		panic(err.Error())
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
-	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_DEBUG, "[LibStatsAPI-Host]")
 	logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
 	}
 	writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-	l = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	l = log.New(writeLog, "[LibStatsAPI-Host] ", 2)
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -145,13 +145,13 @@ func main() {
 
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
-		panic(err)
+		panic(err.Error())
 	}
 
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
-		panic(err)
+		panic(err.Error())
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
@@ -175,21 +175,21 @@ func main() {
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
-		panic(err)
+		panic(err.Error())
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
 	hostnameFqdn, err := fqdn.FqdnHostname()
 	if err != nil {
 		l.Printf("Error: could not get hostname!\n%s\n", err.Error())
-		panic(err)
+		panic(err.Error())
 	}
 	query = fmt.Sprintf(`DELETE FROM hostinfo WHERE hostname = '%s'`, hostnameFqdn)
 	res, err = db.Exec(query)
 	if err != nil {
 		l.Println("Could not purge old host info!")
 		l.Printf("Error: %s\n", err.Error())
-		panic(err)
+		panic(err.Error())
 	}
 	rows, err = res.RowsAffected()
 	if err != nil {
@@ -205,7 +205,7 @@ func main() {
 	res, err = db.Exec(query)
 	if err != nil {
 		l.Printf("Error inserting host info: %s\n", err.Error())
-		panic(err)
+		panic(err.Error())
 	}
 	handleRequests()
 }
