@@ -17,26 +17,30 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 // Set global variables
 var (
 	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
-	logFile, err    = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	logFile, _      = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
 	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
 	db              *sql.DB
+	filename        string
+	yamlConfig      []byte
+	err             error
+	ConfigFile      configFile
 )
 
 func getSyslogServer() string {
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
+	filename, _ = filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err = ioutil.ReadFile(filename)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
 		return "localhost:514"
 	}
-	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	return ConfigFile.SyslogAddress
@@ -46,22 +50,7 @@ func handleRequests() {
 	http.HandleFunc("/api/auth", proxyRequestsAuth)
 	http.HandleFunc("/api/kvm", proxyRequestsKvm)
 	http.HandleFunc("/api/vnc", proxyRequestsVnc)
-	// Parse the config file
-	filename, err := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	if err != nil {
-		l.Printf("Error: %s\n", err.Error())
-		panic(err.Error())
-	}
-	yamlConfig, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic(err.Error())
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-	if err != nil {
-		l.Printf("Error: %s\n", err.Error())
-		panic(err.Error())
-	}
+
 	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
 
 	// Listen on specified port
@@ -78,15 +67,14 @@ func main() {
 	}
 
 	// Parse the config file
-	filename, err := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, err = filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
 	}
-	yamlConfig, err := ioutil.ReadFile(filename)
+	yamlConfig, err = ioutil.ReadFile(filename)
 	if err != nil {
 		panic(err.Error())
 	}
-	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
@@ -223,6 +211,7 @@ type configFile struct {
 	MasterKey       string `yaml:"master_key"`
 	MasterIP        string `yaml:"master_ip"`
 	SyslogAddress   string `yaml:"syslog_server"`
+	AuthServer      string `yaml:"auth_server"`
 }
 
 type requestProxyValue struct {
@@ -260,38 +249,72 @@ func proxyRequestsAuth(w http.ResponseWriter, r *http.Request) {
 	r.Header.Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 
-	decoder := json.NewDecoder(r.Body)
+	// Same request body is being stored because after reading r.Body, it can't be read again:
+	bodyBytes, _ := ioutil.ReadAll(r.Body)
+	r.Body.Close()
+	var reqBodyStored = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+	var reqBodyStored2 = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	decoder := json.NewDecoder(reqBodyStored)
 	var rpv = &requestProxyValue{}
 
 	// Decode the struct internally
-	err := decoder.Decode(&rpv)
+	err = decoder.Decode(&rpv)
 	if err != nil {
 		l.Println(err.Error())
 		return
 	}
 
+	bodyBytesFiltered, malice, err := filterRequests(reqBodyStored2, rpv.Type)
+	if err != nil {
+		l.Printf("Error %s\n", err.Error())
+		return
+	}
+	if malice == true {
+		l.Printf("Malicious request: %t", malice)
+	}
+
 	var proxyURI string
 	if rpv.Type == "createUser" {
-		proxyURI = "/api/auth/user/create"
+		proxyURI = "api/auth/user/create"
 	}
 	if rpv.Type == "getUserDomains" {
-		proxyURI = "/api/auth/user/vms"
+		proxyURI = "api/auth/user/vms"
 	}
 	if rpv.Type == "authDomain" {
-		proxyURI = "/api/auth/vm"
+		proxyURI = "api/auth/vm"
 	}
 	if rpv.Type == "userLogin" {
-		proxyURI = "/api/auth/login"
+		proxyURI = "api/auth/login"
 	}
 	if rpv.Type == "verifyToken" {
-		proxyURI = "/api/auth/login/verify"
+		proxyURI = "api/auth/login/verify"
 	}
 	if rpv.Type == "notify" {
-		proxyURI = "/api/auth/notify"
+		proxyURI = "api/auth/notify"
 	}
 	l.Printf("Request made to %s!", proxyURI)
 
-	r.Body.Close()
+	httpUrl := fmt.Sprintf("http://%s/%s", ConfigFile.AuthServer, proxyURI)
+	returnValues, err := http.Post(httpUrl, "application/json", bytes.NewReader(bodyBytesFiltered))
+	if err != nil {
+		fmt.Fprintf(w, "Error: %s\n", err.Error())
+		returnValues.Body.Close()
+		r.Body.Close()
+		return
+	}
+	b, err := ioutil.ReadAll(returnValues.Body)
+	if err != nil {
+		returnValues.Body.Close()
+		r.Body.Close()
+		fmt.Fprintf(w, "Error: %s\n", err.Error())
+		return
+	}
+	fmt.Fprintf(w, "%s\n", string(b))
+
+	returnValues.Body.Close()
+	reqBodyStored.Close()
+	reqBodyStored2.Close()
 }
 
 func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
@@ -325,15 +348,6 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 		l.Println(err.Error())
 		return
 	}
-
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic(err.Error())
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Retrieve the proper URI to proxy to from the "Type" JSON field
 	var proxyURI string
@@ -596,4 +610,76 @@ func Search(n int, f func(int) bool) int {
 	}
 	// i == j, f(i-1) == false, and f(j) (= f(i)) == true  =>  answer is i.
 	return i
+}
+
+func filterRequests(r io.Reader, proxyType string) ([]byte, bool, error) {
+	var returnBytes []byte
+	var prohibtedStrings = []string{";", "%", "DROP", "TABLE", "TABLES", "tables", "drop", "table", "*", "SELECT", "select", "?", "-", "/"}
+
+	if proxyType == "createUser" {
+		decoder := json.NewDecoder(r)
+		var jrq = &jsonRequestCreateUser{}
+
+		// Decode the struct internally
+		err = decoder.Decode(&jrq)
+		if err != nil {
+			l.Println(err.Error())
+			return nil, false, err
+		}
+
+		jrq.Email = strings.ToLower(jrq.Email)
+		jrq.UserName = strings.ToLower(jrq.UserName)
+		jrq.FullName = strings.ToLower(jrq.FullName)
+
+		for i := 0; i < len(prohibtedStrings); {
+			if strings.Contains(jrq.Email, prohibtedStrings[i]) == true {
+				l.Println("Email field contains malicious string! (Potential SQL Injection?)")
+				l.Printf("Offending field: %s\n", jrq.Email)
+				return nil, false, errors.New("MALICE")
+			}
+			i++
+		}
+		for i := 0; i < len(prohibtedStrings); {
+			if strings.Contains(jrq.UserName, prohibtedStrings[i]) == true {
+				l.Println("Username field contains malicious string! (Potential SQL Injection?)")
+				l.Printf("Offending field: %s\n", jrq.UserName)
+				return nil, false, errors.New("MALICE")
+			}
+			i++
+		}
+		for i := 0; i < len(prohibtedStrings); {
+			if strings.Contains(jrq.FullName, prohibtedStrings[i]) == true {
+				l.Println("Full name field contains malicious string! (Potential SQL Injection?)")
+				l.Printf("Offending field: %s\n", jrq.FullName)
+				return nil, false, errors.New("MALICE")
+			}
+			i++
+		}
+
+		returnBytes = []byte(fmt.Sprintf(`{"FullName": "%s", "Email": "%s", "Password": "%s", "UserName": "%s"}`, jrq.FullName, jrq.Email, jrq.Password, jrq.UserName))
+	} else {
+		l.Printf("Filtering request...")
+		body, err := ioutil.ReadAll(r)
+		if err != nil {
+			l.Printf("Error: %s\n", err.Error())
+		}
+		for i := 0; i < len(prohibtedStrings); {
+			if strings.Contains(string(body), prohibtedStrings[i]) == true {
+				l.Printf("Request body contains malicious string! (Potential SQL injection?)")
+				l.Printf("Offending field: %s\n", string(body))
+				return nil, false, errors.New("MALICE")
+			}
+			i++
+		}
+		returnBytes = body
+	}
+
+	return returnBytes, false, nil
+}
+
+type jsonRequestCreateUser struct {
+	FullName string `json:"FullName"`
+	Email    string `json:"Email"`
+	Password string `json:"Password"`
+	UserName string `json:"UserName"`
 }

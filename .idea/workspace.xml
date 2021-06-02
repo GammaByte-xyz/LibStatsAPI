@@ -4,11 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Changed syslog naming conventions">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Gave MySQL (MariaDB) a global connection">
       <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/auth/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/main.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/conf.go" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/host/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/host/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kvm/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lb/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/lb/main.go" afterDir="false" />
@@ -61,6 +60,7 @@
     <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
     <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="com.intellij.ide.scratch.LRUPopupBuilder$1/New Scratch File" value="MariaDB" />
     <property name="configurable..is.expanded" value="true" />
     <property name="configurable.GoLibrariesConfigurable.is.expanded" value="true" />
     <property name="go.import.settings.migrated" value="true" />
@@ -155,7 +155,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Added requirement for YAML config file to store secrets" />
     <MESSAGE value="Added requirement for YAML config file to store secrets &amp; options" />
     <MESSAGE value="Configured removal of DB row upon removal of domain via API path" />
     <MESSAGE value="Added Logging Facility to stdout" />
@@ -180,7 +179,8 @@
     <MESSAGE value="Fixed http proxy issues" />
     <MESSAGE value="Implemented rsyslog capabilities" />
     <MESSAGE value="Changed syslog naming conventions" />
-    <option name="LAST_COMMIT_MESSAGE" value="Changed syslog naming conventions" />
+    <MESSAGE value="Gave MySQL (MariaDB) a global connection" />
+    <option name="LAST_COMMIT_MESSAGE" value="Gave MySQL (MariaDB) a global connection" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

@@ -23,23 +23,18 @@ import (
 
 // Set global variables
 var (
-	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
-	logFile, err    = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-Auth]")
+	logFile, _      = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	l               = log.New(writeLog, "[LibStatsAPI-Auth] ", 2)
 	db              *sql.DB
+	filename        string
+	yamlConfig      []byte
+	err             error
+	ConfigFile      configFile
 )
 
 func getSyslogServer() string {
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-	if err != nil {
-		l.Fatalf("Error: %s\n", err.Error())
-		return "localhost:514"
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
 	return ConfigFile.SyslogAddress
 }
 
@@ -50,17 +45,8 @@ func handleRequests() {
 	http.HandleFunc("/api/auth/login", userLogin)
 	http.HandleFunc("/api/auth/login/verify", verifyToken)
 	http.HandleFunc("/api/auth/notify", getNotification)
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
 
-	if err != nil {
-		panic(err.Error())
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
-	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
+	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPortAuth)
 
 	// Listen on specified port
 	l.Fatal(http.ListenAndServe(listenAddr, nil))
@@ -81,22 +67,29 @@ func main() {
 	}
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-
+	filename, err = filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
 		panic(err.Error())
 	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+	yamlConfig, err = ioutil.ReadFile(filename)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		panic(err.Error())
+	}
 
-	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
+
+	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_DEBUG, "[LibStatsAPI-Auth]")
 	logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
 	}
 	writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-	l = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	l = log.New(writeLog, "[LibStatsAPI-Auth] ", 2)
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -147,13 +140,13 @@ func main() {
 
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
-		panic(err.Error())
+		panic(err)
 	}
 
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
-		panic(err.Error())
+		panic(err)
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
@@ -193,6 +186,7 @@ type configFile struct {
 	MasterKey       string `yaml:"master_key"`
 	MasterIP        string `yaml:"master_ip"`
 	SyslogAddress   string `yaml:"syslog_server"`
+	ListenPortAuth  string `yaml:"auth_listen_port"`
 }
 
 func GenerateSecureToken(length int) string {
@@ -227,10 +221,6 @@ type tokenVerify struct {
 }
 
 func verifyToken(w http.ResponseWriter, r *http.Request) {
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-
 	// Set the maximum bytes able to be consumed by the API to prevent denial of service
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
@@ -240,13 +230,6 @@ func verifyToken(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	r.Header.Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
-
-	if err != nil {
-		l.Println(err)
-		return
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Decode JSON & assign the json value struct to a variable we can use here
 	decoder := json.NewDecoder(r.Body)
@@ -268,6 +251,9 @@ func verifyToken(w http.ResponseWriter, r *http.Request) {
 
 	query := fmt.Sprintf("SELECT email_address FROM users WHERE user_token = '%s'", verify.Token)
 	rows, err := db.Query(query)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
 
 	var dbEmail string
 	for rows.Next() {
@@ -296,16 +282,6 @@ type getNotified struct {
 }
 
 func getNotification(w http.ResponseWriter, r *http.Request) {
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-
-	if err != nil {
-		panic(err.Error())
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
 	// Decode JSON & assign the json value struct to a variable we can use here
 	decoder := json.NewDecoder(r.Body)
 	var noti = &getNotified{}
@@ -354,16 +330,6 @@ func getNotification(w http.ResponseWriter, r *http.Request) {
 
 }
 func getUserDomains(w http.ResponseWriter, r *http.Request) {
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-
-	if err != nil {
-		panic(err.Error())
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
 	// Decode JSON & assign the json value struct to a variable we can use here
 	decoder := json.NewDecoder(r.Body)
 	var user = &getDomainsStruct{}
@@ -462,10 +428,6 @@ type authLogin struct {
 }
 
 func userLogin(w http.ResponseWriter, r *http.Request) {
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-
 	// Set the maximum bytes able to be consumed by the API to prevent denial of service
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 
@@ -475,13 +437,6 @@ func userLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	r.Header.Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
-
-	if err != nil {
-		l.Println(err)
-		return
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Decode JSON & assign the json value struct to a variable we can use here
 	decoder := json.NewDecoder(r.Body)
@@ -548,9 +503,6 @@ func userLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func authenticateDomain(w http.ResponseWriter, r *http.Request) {
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
 
 	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
 	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
@@ -558,13 +510,6 @@ func authenticateDomain(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	r.Header.Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
-
-	if err != nil {
-		l.Println(err)
-		return
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Decode JSON & assign the json value struct to a variable we can use here
 	decoder := json.NewDecoder(r.Body)
@@ -636,16 +581,6 @@ func authenticateDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 func createUser(w http.ResponseWriter, r *http.Request) {
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-
-	if err != nil {
-		panic(err.Error())
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
 	// Decode JSON & assign the json value struct to a variable we can use here
 	decoder := json.NewDecoder(r.Body)
 	var user *userCreateStruct = &userCreateStruct{}
@@ -766,15 +701,6 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	if userEmail == "" {
 		return false
 	}
-
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-	if err != nil {
-		l.Printf("Error: %s\n", err.Error())
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Execute the query checking for the user binding to the VPS
 	checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)

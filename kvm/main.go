@@ -30,10 +30,10 @@ import (
 
 // Set global variables
 var (
-	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-KVM]")
 	logFile, err    = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	l               = log.New(writeLog, "[LibStatsAPI-KVM] ", 2)
 	db              *sql.DB
 )
 

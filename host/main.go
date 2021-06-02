@@ -28,20 +28,12 @@ import (
 
 // Set global variables
 var (
-	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-Host]")
 	logFile, err2   = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	l               = log.New(writeLog, "[LibStatsAPI-Host] ", 2)
 	db              *sql.DB
 )
-
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
-}
 
 func getSyslogServer() string {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
@@ -56,6 +48,14 @@ func getSyslogServer() string {
 	return ConfigFile.SyslogAddress
 }
 
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
 type configFile struct {
 	VolumePath      string `yaml:"volume_path"`
 	ListenPort      string `yaml:"listen_port"`
@@ -68,6 +68,7 @@ type configFile struct {
 	Subnet          string `yaml:"virtual_network_subnet"`
 	MasterKey       string `yaml:"master_key"`
 	MasterIP        string `yaml:"master_ip"`
+	ListenPortHost  string `yaml:"host_listen_port"`
 	SyslogAddress   string `yaml:"syslog_server"`
 }
 
@@ -83,7 +84,7 @@ func main() {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
-		panic(err.Error())
+		panic(err)
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -101,7 +102,7 @@ func main() {
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
-	db, err := sql.Open("mysql", dbConnectString)
+	db, err = sql.Open("mysql", dbConnectString)
 	if err != nil {
 		l.Printf("Error connecting to DB: %s\n", err.Error())
 	}
@@ -117,9 +118,7 @@ func main() {
 
 	dbConnectString = fmt.Sprintf("%s:%s@tcp(%s:3306)/lsapi", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
 	db, err = sql.Open("mysql", dbConnectString)
-	if err != nil {
-		l.Printf("Error: %s\n", err.Error())
-	}
+
 	query := `CREATE TABLE IF NOT EXISTS users(username text, full_name text, user_token text, email_address text, max_vcpus int, max_ram int, max_block_storage int, used_vcpus int, used_ram int, used_block_storage int, join_date text, uuid text, password varchar(255) DEFAULT NULL)`
 
 	res, err = db.ExecContext(ctx, query)
@@ -150,13 +149,13 @@ func main() {
 
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
-		panic(err.Error())
+		panic(err)
 	}
 
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
-		panic(err.Error())
+		panic(err)
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
@@ -180,21 +179,21 @@ func main() {
 	err = db.Ping()
 	if err != nil {
 		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
-		panic(err.Error())
+		panic(err)
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
 	}
 	hostnameFqdn, err := fqdn.FqdnHostname()
 	if err != nil {
 		l.Printf("Error: could not get hostname!\n%s\n", err.Error())
-		panic(err.Error())
+		panic(err)
 	}
 	query = fmt.Sprintf(`DELETE FROM hostinfo WHERE hostname = '%s'`, hostnameFqdn)
 	res, err = db.Exec(query)
 	if err != nil {
 		l.Println("Could not purge old host info!")
 		l.Printf("Error: %s\n", err.Error())
-		panic(err.Error())
+		panic(err)
 	}
 	rows, err = res.RowsAffected()
 	if err != nil {
@@ -210,7 +209,7 @@ func main() {
 	res, err = db.Exec(query)
 	if err != nil {
 		l.Printf("Error inserting host info: %s\n", err.Error())
-		panic(err.Error())
+		panic(err)
 	}
 	handleRequests()
 }
