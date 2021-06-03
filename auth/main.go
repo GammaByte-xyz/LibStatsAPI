@@ -273,6 +273,7 @@ func verifyToken(w http.ResponseWriter, r *http.Request) {
 		l.Printf("User %s token was incorrect!", verify.Email)
 		return
 	}
+	rows.Close()
 
 }
 
@@ -473,6 +474,7 @@ func userLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	rows.Close()
 
 	sha512Bytes := sha512.Sum512([]byte(login.Password))
 	requestedPassHash := hex.EncodeToString(sha512Bytes[:])
@@ -492,6 +494,7 @@ func userLogin(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		rows.Close()
 		jsonReply := fmt.Sprintf(`{"Token": "%s", "Email": "%s"}`, userToken, login.Email)
 		fmt.Fprintf(w, "%s\n", jsonReply)
 	} else {
@@ -556,7 +559,6 @@ func authenticateDomain(w http.ResponseWriter, r *http.Request) {
 		l.Println(err)
 		return
 	}
-	defer rows.Close()
 
 	var domain string
 	var domRam int
@@ -576,6 +578,7 @@ func authenticateDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	JsonString := fmt.Sprintf(`{"DomainName": "%s", "DomainRam": "%d", "DomainCpus": "%d", "DomainStorage": "%d"}`, domain, domRam, domCpus, domStorage)
 	fmt.Fprintf(w, "%s\n", JsonString)
+	rows.Close()
 
 }
 

@@ -296,10 +296,14 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 		l.Println(err.Error())
 		return
 	}
-	fqdn := "alpha1-host2"
+	FQDN := out.String()
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
 
 	// Send values to master node
-	VncAppendRequest := fmt.Sprintf("{\"VncAppendRequest\": \"%s: %s:%s\", \"MasterKey\": \"%s\"}", vncToken, fqdn, vncPort, ConfigFile.MasterKey)
+	VncAppendRequest := fmt.Sprintf("{\"VncAppendRequest\": \"%s: %s:%s\", \"MasterKey\": \"%s\"}", vncToken, FQDN, vncPort, ConfigFile.MasterKey)
 	masterResponse := notifyMaster(VncAppendRequest)
 	l.Printf("Master response: %s\n", masterResponse)
 
@@ -808,6 +812,7 @@ type configFile struct {
 	MasterKey       string `yaml:"master_key"`
 	MasterIP        string `yaml:"master_ip"`
 	SyslogAddress   string `yaml:"syslog_server"`
+	AuthServer      string `yaml:"auth_server"`
 }
 
 // Values parsed from JSON API input that can be used later
@@ -877,7 +882,7 @@ func notifyMaster(message string) string {
 		return "Error"
 	}
 
-	masterUrl := fmt.Sprintf("http://%s:%s/api/auth/notify", ConfigFile.MasterIP, ConfigFile.ListenPort)
+	masterUrl := fmt.Sprintf("http://%s/api/auth/notify", ConfigFile.AuthServer)
 
 	curlBody := fmt.Sprintf("'%s'", message)
 	curlCmd := []string{"-X", "POST", "-fSsL", "-d", curlBody, masterUrl}
