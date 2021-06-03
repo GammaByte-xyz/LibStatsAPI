@@ -89,7 +89,7 @@ func main() {
 		l.Fatalf("Error: %s\n", err.Error())
 	}
 	writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-	l = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	l = log.New(writeLog, "[LibStatsAPI-ALB] ", log.Ldate|log.Ltime|log.LUTC|log.Lmsgprefix|log.Lmicroseconds|log.LstdFlags)
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
@@ -98,9 +98,8 @@ func main() {
 		l.Printf("Error: %s\n", err.Error())
 		panic(err.Error())
 	}
-	createDB := `CREATE DATABASE IF NOT EXISTS lsapi`
 
-	res, err := db.Exec(createDB)
+	res, err := db.Exec("CREATE DATABASE IF NOT EXISTS lsapi")
 	if err != nil {
 		l.Printf("Error %s when creating lsapi DB\n", err.Error())
 		panic(err.Error())
@@ -528,23 +527,94 @@ func proxyRequestsVnc(w http.ResponseWriter, r *http.Request) {
 	r.Header.Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 
-	decoder := json.NewDecoder(r.Body)
+	// Define var dbvar for use later
+	var dbvar = &dbValues{}
+
+	// Same request body is being stored because after reading r.Body, it can't be read again:
+	bodyBytes, _ := ioutil.ReadAll(r.Body)
+	r.Body.Close()
+	var reqBodyStored = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+	var reqBodyStored2 = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	decoder := json.NewDecoder(reqBodyStored)
 	var rpv = &requestProxyValue{}
 
 	// Decode the struct internally
-	err := decoder.Decode(&rpv)
+	err = decoder.Decode(&rpv)
 	if err != nil {
-		r.Body.Close()
 		l.Println(err.Error())
 		return
 	}
 
+	bodyBytesFiltered, malice, err := filterRequests(reqBodyStored2, rpv.Type)
+	if err != nil {
+		l.Printf("Error %s\n", err.Error())
+		return
+	}
+	if malice == true {
+		l.Printf("Malicious request: %t", malice)
+	}
+
 	var proxyURI string
 	if rpv.Type == "createVncProxy" {
-		proxyURI = "/api/vnc/proxy/create"
+		proxyURI = "api/vnc/proxy/create"
 	}
 	l.Printf("Request made to %s!", proxyURI)
 
+	result, err := db.Query("SELECT host_binding FROM domaininfo WHERE domain_name = ?", rpv.DomainName)
+	if err != nil {
+		l.Printf("Error querying DB for host binding for VM %s!", rpv.DomainName)
+		l.Printf("Error: %s\n", err.Error())
+		r.Body.Close()
+		return
+	}
+	for result.Next() {
+		result.Scan(&dbvar.hostBinding)
+	}
+	if dbvar.hostBinding == "" {
+		l.Printf("Error: Domain %s has no host binding!", rpv.DomainName)
+		r.Body.Close()
+		return
+	}
+	l.Printf("Domain %s is bound to host %s!", rpv.DomainName, dbvar.hostBinding)
+
+	//queryString = fmt.Sprintf("SELECT kvm_api_port FROM hostinfo WHERE hostname = '%s'", dbvar.hostBinding)
+	result, err = db.Query("SELECT kvm_api_port FROM hostinfo WHERE hostname = ?", dbvar.hostBinding)
+	if err != nil {
+		l.Printf("Error querying DB for port on host %s!", dbvar.hostBinding)
+		r.Body.Close()
+		return
+	}
+	for result.Next() {
+		result.Scan(&dbvar.hostPort)
+	}
+	if dbvar.hostPort == "" {
+		l.Printf("Error: Host %s API has no port binding!", dbvar.hostBinding)
+		r.Body.Close()
+		return
+	}
+	l.Printf("Host %s API has port binding %s!", dbvar.hostBinding, dbvar.hostPort)
+
+	httpUrl := fmt.Sprintf("http://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
+	returnValues, err := http.Post(httpUrl, "application/json", bytes.NewReader(bodyBytesFiltered))
+	if err != nil {
+		fmt.Fprintf(w, "Error: %s\n", err.Error())
+		returnValues.Body.Close()
+		r.Body.Close()
+		return
+	}
+	b, err := ioutil.ReadAll(returnValues.Body)
+	if err != nil {
+		returnValues.Body.Close()
+		r.Body.Close()
+		fmt.Fprintf(w, "Error: %s\n", err.Error())
+		return
+	}
+	fmt.Fprintf(w, "%s\n", string(b))
+
+	returnValues.Body.Close()
+	reqBodyStored.Close()
+	reqBodyStored2.Close()
 }
 
 type hostConfig struct {
@@ -669,12 +739,11 @@ func filterRequests(r io.Reader, proxyType string) ([]byte, bool, error) {
 
 		returnBytes = []byte(fmt.Sprintf(`{"FullName": "%s", "Email": "%s", "Password": "%s", "UserName": "%s"}`, jrq.FullName, jrq.Email, jrq.Password, jrq.UserName))
 	} else {
-		l.Printf("Filtering request...")
+		l.Printf("Filtering request with type %s...\n", proxyType)
 		body, err := ioutil.ReadAll(r)
 		if err != nil {
 			l.Printf("Error: %s\n", err.Error())
 		}
-		l.Printf(string(body))
 		for i := 0; i < len(prohibtedStrings); {
 			if strings.Contains(string(body), prohibtedStrings[i]) == true {
 				l.Printf("Request body contains malicious string! (Potential SQL injection?)")

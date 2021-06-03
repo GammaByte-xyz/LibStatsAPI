@@ -736,6 +736,7 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	rows.Close()
 
 	fileSizeMB, err := GetFileSize(diskPath)
 	if err != nil {
@@ -834,8 +835,8 @@ type createDomainStruct struct {
 }
 
 type vncProxyValues struct {
-	UserToken string `json:"Token"`
-	VpsName   string `json:"VpsName"`
+	UserToken string `json:"UserToken"`
+	VpsName   string `json:"DomainName"`
 	Email     string `json:"Email"`
 }
 
@@ -923,6 +924,7 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 		l.Println(err.Error())
 		return false
 	}
+	rows.Close()
 
 	// Execute the queries checking for the user's used resources
 	//query = fmt.Sprintf("select used_vcpus, used_ram, used_block_storage from users where user_token = '%s'", userToken)
@@ -942,6 +944,7 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 		l.Println(err.Error())
 		return false
 	}
+	rows.Close()
 
 	var hasEnoughRam bool
 	var hasEnoughCpus bool
