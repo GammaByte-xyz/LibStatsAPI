@@ -976,9 +976,9 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 		newRamSize := resourcesUsed.ram + ramSize
 		newCpuSize := resourcesUsed.vcpus + cpuSize
 		newStorageSize := resourcesUsed.storage + diskSize
-		query := fmt.Sprintf("UPDATE users SET used_ram = %d, used_vcpus = %d, used_block_storage = %d WHERE user_token = '%s'", newRamSize, newCpuSize, newStorageSize, userToken)
-		l.Printf("MySQL ==> %s\n", query)
-		db.Exec(query)
+		//query := fmt.Sprintf("UPDATE users SET used_ram = %d, used_vcpus = %d, used_block_storage = %d WHERE user_token = '%s'", newRamSize, newCpuSize, newStorageSize, userToken)
+		//l.Printf("MySQL ==> %s\n", query)
+		db.Exec("UPDATE users SET used_ram = ?, used_vcpus = ?, used_block_storage = ? WHERE user_token = ?", newRamSize, newCpuSize, newStorageSize, userToken)
 		hasEnoughResources = true
 	} else {
 		hasEnoughResources = false
@@ -1661,11 +1661,10 @@ func setIP(network string, macAddr string, domainName string, qcow2Name string, 
 	// Get the current date/time
 	dt := time.Now()
 	// Generate the insert string
-	insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ram, vcpus, storage, ip_address, disk_path, time_created, user_email, user_full_name, username, user_token, host_binding) VALUES ('%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, domainRam, domainCpus, domainStorage, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName, userToken, hostname)
-	l.Printf("MySQL ==> %s\n\n", insertData)
+	//insertData := fmt.Sprintf("INSERT INTO domaininfo (domain_name, network, mac_address, ram, vcpus, storage, ip_address, disk_path, time_created, user_email, user_full_name, username, user_token, host_binding) VALUES ('%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", domainName, network, macAddr, domainRam, domainCpus, domainStorage, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName, userToken, hostname)
+	//l.Printf("MySQL ==> %s\n\n", insertData)
 
-	res, err = db.Exec(insertData)
-
+	res, err = db.Exec("INSERT INTO domaininfo (domain_name, network, mac_address, ram, vcpus, storage, ip_address, disk_path, time_created, user_email, user_full_name, username, user_token, host_binding) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", domainName, network, macAddr, domainRam, domainCpus, domainStorage, randIP, qcow2Name, dt.String(), userEmail, userFullName, userName, userToken, hostname)
 	if err != nil {
 		l.Println(err)
 		revertDiskArgs := []string{"-rf", qcow2Name}
@@ -1896,8 +1895,8 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "Domain disk (%s) was successfully wiped & purged.\n", fileName)
 			l.Printf("Domain disk (%s) was successfully wiped & purged.\n", fileName)
 		}
-		dbQuery := fmt.Sprintf("DELETE FROM domaininfo WHERE domain_name = '%s'", t.VpsName)
-		res, err := db.Exec(dbQuery)
+		//dbQuery := fmt.Sprintf("DELETE FROM domaininfo WHERE domain_name = '%s'", t.VpsName)
+		res, err := db.Exec("DELETE FROM domaininfo WHERE domain_name = ?", t.VpsName)
 		if err != nil {
 			fmt.Fprintf(w, "Failed to remove row from DB.\n %s\n %s\n", err, res)
 			l.Fatalf("Failed to remove row from DB.\n %s\n %s\n", err, res)

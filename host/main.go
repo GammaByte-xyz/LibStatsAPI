@@ -188,8 +188,8 @@ func main() {
 		l.Printf("Error: could not get hostname!\n%s\n", err.Error())
 		panic(err)
 	}
-	query = fmt.Sprintf(`DELETE FROM hostinfo WHERE hostname = '%s'`, hostnameFqdn)
-	res, err = db.Exec(query)
+	//query = fmt.Sprintf(`DELETE FROM hostinfo WHERE hostname = '%s'`, hostnameFqdn)
+	res, err = db.Exec("DELETE FROM hostinfo WHERE hostname = ?", hostnameFqdn)
 	if err != nil {
 		l.Println("Could not purge old host info!")
 		l.Printf("Error: %s\n", err.Error())
@@ -205,8 +205,8 @@ func main() {
 	if err != nil {
 		l.Printf("Error getting host info: %s\n", err.Error())
 	}
-	query = fmt.Sprintf(`INSERT INTO hostinfo (host_ip, geolocation, host_ip_public, ram_gb, cpu_cores, linux_distro, kernel_version, hostname, api_port, kvm_api_port) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s')`, hostIP, geolocation, hostIPWAN, ramGb, cpuCores, distro, kernelVersion, hostname, 4234, ConfigFile.ListenPort)
-	res, err = db.Exec(query)
+	//query = fmt.Sprintf(`INSERT INTO hostinfo (host_ip, geolocation, host_ip_public, ram_gb, cpu_cores, linux_distro, kernel_version, hostname, api_port, kvm_api_port) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s')`, hostIP, geolocation, hostIPWAN, ramGb, cpuCores, distro, kernelVersion, hostname, 4234, ConfigFile.ListenPort)
+	res, err = db.Exec("INSERT INTO hostinfo (host_ip, geolocation, host_ip_public, ram_gb, cpu_cores, linux_distro, kernel_version, hostname, api_port, kvm_api_port) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", hostIP, geolocation, hostIPWAN, ramGb, cpuCores, distro, kernelVersion, hostname, 4234, ConfigFile.ListenPort)
 	if err != nil {
 		l.Printf("Error inserting host info: %s\n", err.Error())
 		panic(err)
