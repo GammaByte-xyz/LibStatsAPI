@@ -852,12 +852,15 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if t.Email == "" {
+		fmt.Fprintf(w, `{"MissingEmail": "true"}`)
 		return
 	}
 	if t.UserToken == "" {
+		fmt.Fprintf(w, `{"MissingUserToken": "true"}`)
 		return
 	}
 	if t.VpsName == "" {
+		fmt.Fprintf(w, `{"MissingDomainName": "true"}`)
 		return
 	}
 
