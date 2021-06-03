@@ -933,6 +933,8 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	time.AfterFunc(3*time.Hour, func() { destroyVncToken(returnValues.AppendString) })
+
 	// Generate a URL that specifies the token & proper host:port combination, then send it to the API request endpoint as a JSON string
 	l.Printf("%s\n", returnValues.VncURL)
 	fmt.Fprintf(w, "{\"VncURL\": \"%s\"}\n", returnValues.VncURL)
@@ -941,4 +943,22 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 type returnVncValues struct {
 	VncURL       string `json:"VncURL"`
 	AppendString string `json:"AppendString"`
+}
+
+func destroyVncToken(stringToDestroy string) {
+
+	read, err := ioutil.ReadFile("/etc/gammabyte/lsapi/vnc/vnc.conf")
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		panic(err)
+	}
+	newContents := strings.Replace(string(read), stringToDestroy, "", -1)
+	err = ioutil.WriteFile("/etc/gammabyte/lsapi/vnc/vnc.conf", []byte(newContents), 0)
+	if err != nil {
+		l.Printf("Error: %s\n")
+		panic(err)
+	}
+
+	l.Printf("Destroyed string in VNC config file matching value %s.\n", stringToDestroy)
+
 }
