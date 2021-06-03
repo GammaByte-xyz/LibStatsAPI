@@ -4,8 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Implemented novnc src">
-      <change beforePath="$PROJECT_DIR$/.idea/webResources.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/webResources.xml" afterDir="false" />
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="NA">
+      <change beforePath="$PROJECT_DIR$/.gitmodules" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -146,8 +147,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Fixed MySQL" />
-    <MESSAGE value="Added some auth input validation" />
     <MESSAGE value="Cleaned up some code" />
     <MESSAGE value="Removed fatal/panic facilities if there is an error, as to keep the daemon running" />
     <MESSAGE value="More sanity checks &amp; added resource checks" />
@@ -171,7 +170,9 @@
     <MESSAGE value="More VNC optimizations" />
     <MESSAGE value="Implemented novnc" />
     <MESSAGE value="Implemented novnc src" />
-    <option name="LAST_COMMIT_MESSAGE" value="Implemented novnc src" />
+    <MESSAGE value="Fixed submodules" />
+    <MESSAGE value="NA" />
+    <option name="LAST_COMMIT_MESSAGE" value="NA" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
