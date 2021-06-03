@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="dataSourceStorageLocal" created-in="GO-211.7142.13" />
+  <component name="dataSourceStorageLocal" created-in="GO-211.7442.27">
+    <data-source name="mariadb-host" uuid="3ca0423c-a141-4c15-9364-fc321d4c7e93">
+      <database-info product="" version="" jdbc-version="" driver-name="" driver-version="" dbms="MARIADB" exact-version="0" />
+      <secret-storage>master_key</secret-storage>
+      <user-name>carter</user-name>
+      <schema-mapping />
+    </data-source>
+  </component>
 </project>
