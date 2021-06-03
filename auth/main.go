@@ -249,8 +249,8 @@ func verifyToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := fmt.Sprintf("SELECT email_address FROM users WHERE user_token = '%s'", verify.Token)
-	rows, err := db.Query(query)
+	//query := fmt.Sprintf("SELECT email_address FROM users WHERE user_token = '%s'", verify.Token)
+	rows, err := db.Query("SELECT email_address FROM users WHERE user_token = ?", verify.Token)
 	if err != nil {
 		l.Printf("Error: %s\n", err.Error())
 	}
@@ -356,9 +356,9 @@ func getUserDomains(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := fmt.Sprintf(`SELECT JSON_ARRAYAGG(JSON_OBJECT('domain_name', domain_name)) FROM domaininfo WHERE user_token = '%s'`, user.Token)
+	//query := fmt.Sprintf(`SELECT JSON_ARRAYAGG(JSON_OBJECT('domain_name', domain_name)) FROM domaininfo WHERE user_token = '%s'`, user.Token)
 
-	dbVars, err := db.Query(query)
+	dbVars, err := db.Query("SELECT JSON_ARRAYAGG(JSON_OBJECT('domain_name', domain_name)) FROM domaininfo WHERE user_token = ?", user.Token)
 	if err != nil {
 		l.Println("Could not get domains from MySQL.")
 		l.Println(dbVars)
@@ -457,8 +457,8 @@ func userLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Compare password hashes
-	query := fmt.Sprintf("SELECT password FROM users WHERE email_address = '%s'", login.Email)
-	rows, err := db.Query(query)
+	//query := fmt.Sprintf("SELECT password FROM users WHERE email_address = '%s'", login.Email)
+	rows, err := db.Query("SELECT password FROM users WHERE email_address = ?", login.Email)
 	if err != nil {
 		l.Println(err)
 		return
@@ -478,8 +478,8 @@ func userLogin(w http.ResponseWriter, r *http.Request) {
 	requestedPassHash := hex.EncodeToString(sha512Bytes[:])
 
 	if requestedPassHash == dbPassword {
-		tokenQuery := fmt.Sprintf("SELECT user_token FROM users WHERE email_address = '%s' AND password = '%s'", login.Email, requestedPassHash)
-		rows, err := db.Query(tokenQuery)
+		//tokenQuery := fmt.Sprintf("SELECT user_token FROM users WHERE email_address = '%s' AND password = '%s'", login.Email, requestedPassHash)
+		rows, err := db.Query("SELECT user_token FROM users WHERE email_address = ? AND password = ?", login.Email, requestedPassHash)
 		if err != nil {
 			l.Println(err)
 			return
@@ -550,9 +550,8 @@ func authenticateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := fmt.Sprintf("SELECT domain_name, ram, vcpus, storage FROM domaininfo WHERE user_email = '%s' AND user_token = '%s' AND domain_name = '%s'", vps.UserEmail, vps.UserToken, vps.DomainName)
-
-	rows, err := db.Query(query)
+	//query := fmt.Sprintf("SELECT domain_name, ram, vcpus, storage FROM domaininfo WHERE user_email = '%s' AND user_token = '%s' AND domain_name = '%s'", vps.UserEmail, vps.UserToken, vps.DomainName)
+	rows, err := db.Query("SELECT domain_name, ram, vcpus, storage FROM domaininfo WHERE user_email = ? AND user_token = ? AND domain_name = ?", vps.UserEmail, vps.UserToken, vps.DomainName)
 	if err != nil {
 		l.Println(err)
 		return
@@ -621,10 +620,10 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	checkQueryEmail := fmt.Sprintf(`SELECT email_address FROM users WHERE email_address='%s'`, user.Email)
-	checkQueryUserName := fmt.Sprintf(`SELECT username FROM users WHERE username='%s'`, user.UserName)
+	//checkQueryEmail := fmt.Sprintf(`SELECT email_address FROM users WHERE email_address='%s'`, user.Email)
+	//checkQueryUserName := fmt.Sprintf(`SELECT username FROM users WHERE username='%s'`, user.UserName)
 	// Check if user exists already
-	checkEmailExists, err := db.Query(checkQueryEmail)
+	checkEmailExists, err := db.Query("SELECT email_address FROM users WHERE email_address = ?", user.Email)
 	if checkEmailExists.Next() {
 		exists := fmt.Sprintf(`{"UserExists": "true"}`)
 		fmt.Fprintf(w, "%s\n", exists)
@@ -632,7 +631,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	checkUserNameExists, err := db.Query(checkQueryUserName)
+	checkUserNameExists, err := db.Query("SELECT username FROM users WHERE username = ?", user.UserName)
 	if checkUserNameExists.Next() {
 		exists := fmt.Sprintf(`{"UserExists": "true"}`)
 		fmt.Fprintf(w, "%s\n", exists)
@@ -703,8 +702,8 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	}
 
 	// Execute the query checking for the user binding to the VPS
-	checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)
-	checkOwnership := db.QueryRow(checkQuery)
+	//checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)
+	checkOwnership := db.QueryRow("SELECT domain_name FROM domaininfo WHERE user_token = ? AND domain_name = ? AND user_email = ?", userToken, vpsName, userEmail)
 
 	var ownsVps bool
 

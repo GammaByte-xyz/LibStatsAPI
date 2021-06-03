@@ -142,13 +142,13 @@ func main() {
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
 	if err != nil {
-		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
+		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
 		panic(err.Error())
 	}
 
 	err = db.Ping()
 	if err != nil {
-		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err)
+		l.Printf("Error - could not connect to MySQL DB:\n %s\n", err.Error())
 		panic(err.Error())
 	} else {
 		l.Printf("Successfully connected to MySQL DB.\n")
@@ -277,20 +277,15 @@ func proxyRequestsAuth(w http.ResponseWriter, r *http.Request) {
 	var proxyURI string
 	if rpv.Type == "createUser" {
 		proxyURI = "api/auth/user/create"
-	}
-	if rpv.Type == "getUserDomains" {
+	} else if rpv.Type == "getUserDomains" {
 		proxyURI = "api/auth/user/vms"
-	}
-	if rpv.Type == "authDomain" {
+	} else if rpv.Type == "authDomain" {
 		proxyURI = "api/auth/vm"
-	}
-	if rpv.Type == "userLogin" {
+	} else if rpv.Type == "userLogin" {
 		proxyURI = "api/auth/login"
-	}
-	if rpv.Type == "verifyToken" {
+	} else if rpv.Type == "verifyToken" {
 		proxyURI = "api/auth/login/verify"
-	}
-	if rpv.Type == "notify" {
+	} else if rpv.Type == "notify" {
 		proxyURI = "api/auth/notify"
 	}
 	l.Printf("Request made to %s!", proxyURI)
@@ -469,8 +464,8 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get values from DB
-	queryString := fmt.Sprintf("SELECT host_binding FROM domaininfo WHERE domain_name = '%s'", rpv.DomainName)
-	result, err := db.Query(queryString)
+	//queryString := fmt.Sprintf("SELECT host_binding FROM domaininfo WHERE domain_name = '%s'", rpv.DomainName)
+	result, err := db.Query("SELECT host_binding FROM domaininfo WHERE domain_name = ?", rpv.DomainName)
 	if err != nil {
 		l.Printf("Error querying DB for host binding for VM %s!", rpv.DomainName)
 		l.Printf("Error: %s\n", err.Error())
@@ -487,8 +482,8 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	}
 	l.Printf("Domain %s is bound to host %s!", rpv.DomainName, dbvar.hostBinding)
 
-	queryString = fmt.Sprintf("SELECT kvm_api_port FROM hostinfo WHERE hostname = '%s'", dbvar.hostBinding)
-	result, err = db.Query(queryString)
+	//queryString = fmt.Sprintf("SELECT kvm_api_port FROM hostinfo WHERE hostname = '%s'", dbvar.hostBinding)
+	result, err = db.Query("SELECT kvm_api_port FROM hostinfo WHERE hostname = ?", dbvar.hostBinding)
 	if err != nil {
 		l.Printf("Error querying DB for port on host %s!", dbvar.hostBinding)
 		r.Body.Close()

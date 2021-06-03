@@ -4,9 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Added some protection against SQL injection">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Fixed some proxy issues">
       <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/auth/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/kvm/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lb/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/lb/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -152,7 +154,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Configured removal of DB row upon removal of domain via API path" />
     <MESSAGE value="Added Logging Facility to stdout" />
     <MESSAGE value="Added totals &amp; more variable types for printing all domains." />
     <MESSAGE value="Changed some math" />
@@ -177,7 +178,8 @@
     <MESSAGE value="Changed syslog naming conventions" />
     <MESSAGE value="Gave MySQL (MariaDB) a global connection" />
     <MESSAGE value="Added some protection against SQL injection" />
-    <option name="LAST_COMMIT_MESSAGE" value="Added some protection against SQL injection" />
+    <MESSAGE value="Fixed some proxy issues" />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed some proxy issues" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

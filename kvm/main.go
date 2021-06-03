@@ -454,8 +454,8 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Execute the query checking for the user binding to the VPS
-	checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)
-	checkOwnership := db.QueryRow(checkQuery)
+	//checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)
+	checkOwnership := db.QueryRow("SELECT domain_name FROM domaininfo WHERE user_token = ? AND domain_name = ? AND user_email = ?", userToken, vpsName, userEmail)
 
 	var ownsVps bool
 
@@ -727,8 +727,8 @@ func getStats(w http.ResponseWriter, r *http.Request) {
 
 	// Get disk statistics
 	var diskPath string
-	diskLocationQueryString := fmt.Sprintf(`SELECT disk_path FROM domaininfo WHERE domain_name = '%s'`, t.DomainName)
-	rows, err := db.Query(diskLocationQueryString)
+	//diskLocationQueryString := fmt.Sprintf(`SELECT disk_path FROM domaininfo WHERE domain_name = '%s'`, t.DomainName)
+	rows, err := db.Query("SELECT disk_path FROM domaininfo WHERE domain_name = ?", t.DomainName)
 	for rows.Next() {
 		err := rows.Scan(&diskPath)
 		if err != nil {
@@ -906,8 +906,8 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 	resourcesUsed := usedResources{}
 
 	// Execute the queries checking for the user's max resources
-	query := fmt.Sprintf("select max_vcpus, max_ram, max_block_storage from users where user_token = '%s'", userToken)
-	rows, err := db.Query(query)
+	//query := fmt.Sprintf("select max_vcpus, max_ram, max_block_storage from users where user_token = '%s'", userToken)
+	rows, err := db.Query("SELECT max_vcpus, max_ram, max_block_storage FROM users WHERE user_token = ?", userToken)
 
 	defer rows.Close()
 	for rows.Next() {
@@ -925,8 +925,8 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 	}
 
 	// Execute the queries checking for the user's used resources
-	query = fmt.Sprintf("select used_vcpus, used_ram, used_block_storage from users where user_token = '%s'", userToken)
-	rows, err = db.Query(query)
+	//query = fmt.Sprintf("select used_vcpus, used_ram, used_block_storage from users where user_token = '%s'", userToken)
+	rows, err = db.Query("SELECT used_vcpus, used_ram, used_block_storage FROM users WHERE user_token = ?", userToken)
 
 	defer rows.Close()
 	for rows.Next() {
@@ -1743,8 +1743,8 @@ func getDomains(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Execute MySQL Query to get all managed VMs
-	query := `SELECT domain_name FROM domaininfo`
-	dbVars, err := db.Query(query)
+	//query := `SELECT domain_name FROM domaininfo`
+	dbVars, err := db.Query("SELECT domain_name FROM domaininfo")
 	if err != nil {
 		l.Println("Could not get domains from MySQL.")
 	}
@@ -1813,9 +1813,9 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Domain to delete: %s\n", t.VpsName)
 
 		var d dbValues
-		queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, ram, vcpus, storage, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
-		l.Println(queryData)
-		err := db.QueryRow(queryData).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.Ram, &d.Vcpus, &d.Storage, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
+		//queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, ram, vcpus, storage, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
+		//l.Println(queryData)
+		err := db.QueryRow("SELECT domain_name, ip_address, mac_address, ram, vcpus, storage, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name = ?", t.VpsName).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.Ram, &d.Vcpus, &d.Storage, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
 		l.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n RAM: %dGB\n vCPUS: %d\n Storage: %dGB\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n User Email: %s\n User's Full Name: %s\n Username: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.Ram, d.Vcpus, d.Storage, d.NetworkName, d.DiskPath, d.TimeCreated, d.UserEmail, d.UserFullName, d.UserName)
 		if err != nil {
 			l.Println(err.Error())
