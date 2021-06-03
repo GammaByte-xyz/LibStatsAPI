@@ -669,9 +669,9 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	passwordHex := sha512.Sum512([]byte(user.Password))
 	passwordString := hex.EncodeToString(passwordHex[:])
 	// Gather information from JSON input to generate user data, then put it in MariaDB.
-	insertQuery := fmt.Sprintf("INSERT INTO users (username, full_name, user_token, email_address, join_date, uuid, password, max_vcpus, max_ram, max_block_storage, used_vcpus, used_ram, used_block_storage) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, %d);", user.UserName, user.FullName, token, user.Email, joinDate.String(), uuidValue.String(), passwordString, 0, 0, 0, 0, 0, 0)
+	//insertQuery := fmt.Sprintf("INSERT INTO users (username, full_name, user_token, email_address, join_date, uuid, password, max_vcpus, max_ram, max_block_storage, used_vcpus, used_ram, used_block_storage) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, %d);", user.UserName, user.FullName, token, user.Email, joinDate.String(), uuidValue.String(), passwordString, 0, 0, 0, 0, 0, 0)
 
-	res, err = db.ExecContext(ctx, insertQuery)
+	res, err = db.ExecContext(ctx, "INSERT INTO users (username, full_name, user_token, email_address, join_date, uuid, password, max_vcpus, max_ram, max_block_storage, used_vcpus, used_ram, used_block_storage) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", user.UserName, user.FullName, token, user.Email, joinDate.String(), uuidValue.String(), passwordString, 0, 0, 0, 0, 0, 0)
 	if err != nil {
 		l.Printf("Error %s when inserting user info\n", err)
 		return
