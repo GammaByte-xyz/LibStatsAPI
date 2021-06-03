@@ -336,7 +336,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	var reqBodyStored2 = ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
 
 	// Create decoder & define var rpv
-	decoder := json.NewDecoder(reqBodyStored2)
+	decoder := json.NewDecoder(reqBodyStored)
 	var rpv = &requestProxyValue{}
 
 	// Define var dbvar for use later
@@ -347,6 +347,15 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		l.Println(err.Error())
 		return
+	}
+
+	bodyBytesFiltered, malice, err := filterRequests(reqBodyStored2, rpv.Type)
+	if err != nil {
+		l.Printf("Error %s\n", err.Error())
+		return
+	}
+	if malice == true {
+		l.Printf("Malicious request: %t", malice)
 	}
 
 	// Retrieve the proper URI to proxy to from the "Type" JSON field
@@ -371,6 +380,10 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	var i = 0
 	var hostStats []string
 	var hostStatsRam []int
+	if proxyURI == "api/kvm/stats" {
+
+	}
+
 	if proxyURI == "api/kvm/create/domain" {
 		hostnames, hostIPs, err := parseHostFile()
 		if err != nil {
@@ -431,7 +444,9 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 		}
 
 		httpUrl := fmt.Sprintf("http://%s:%s/%s", hostChosen, dbvar.hostPort, proxyURI)
-		returnValues, err := http.Post(httpUrl, "application/json", reqBodyStored)
+		bodyBytesFilteredBuffered := bytes.NewBuffer(bodyBytesFiltered)
+		l.Printf(string(bodyBytesFiltered))
+		returnValues, err := http.Post(httpUrl, "application/json", bodyBytesFilteredBuffered)
 		if err != nil {
 			fmt.Fprintf(w, "Error: %s\n", err.Error())
 			returnValues.Body.Close()
@@ -491,7 +506,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 
 	// Setup the forward proxy
 	httpUrl := fmt.Sprintf("http://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
-	returnValues, err := http.Post(httpUrl, "application/json", reqBodyStored)
+	returnValues, err := http.Post(httpUrl, "application/json", bytes.NewBuffer(bodyBytesFiltered))
 	if err != nil {
 		r.Body.Close()
 		l.Printf("Error: %s\n", err.Error())
@@ -614,9 +629,10 @@ func Search(n int, f func(int) bool) int {
 
 func filterRequests(r io.Reader, proxyType string) ([]byte, bool, error) {
 	var returnBytes []byte
-	var prohibtedStrings = []string{";", "%", "DROP", "TABLE", "TABLES", "tables", "drop", "table", "*", "SELECT", "select", "?", "-", "/"}
+	var prohibtedStrings = []string{";", "%", "DROP", "TABLE", "TABLES", "tables", "drop", "table", "*", "SELECT", "select"}
 
 	if proxyType == "createUser" {
+		prohibtedStrings = []string{";", "%", "DROP", "TABLE", "TABLES", "tables", "drop", "table", "*", "SELECT", "select", "?", "-", "/"}
 		decoder := json.NewDecoder(r)
 		var jrq = &jsonRequestCreateUser{}
 
@@ -663,6 +679,7 @@ func filterRequests(r io.Reader, proxyType string) ([]byte, bool, error) {
 		if err != nil {
 			l.Printf("Error: %s\n", err.Error())
 		}
+		l.Printf(string(body))
 		for i := 0; i < len(prohibtedStrings); {
 			if strings.Contains(string(body), prohibtedStrings[i]) == true {
 				l.Printf("Request body contains malicious string! (Potential SQL injection?)")
