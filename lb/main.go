@@ -49,7 +49,7 @@ func getSyslogServer() string {
 func handleRequests() {
 	http.HandleFunc("/api/auth", proxyRequestsAuth)
 	http.HandleFunc("/api/kvm", proxyRequestsKvm)
-	http.HandleFunc("/api/vnc", proxyRequestsVnc)
+	http.HandleFunc("/api/vnc", vncProxy)
 
 	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
 
@@ -763,4 +763,182 @@ type jsonRequestCreateUser struct {
 	Email    string `json:"Email"`
 	Password string `json:"Password"`
 	UserName string `json:"UserName"`
+}
+
+type vncProxyValues struct {
+	UserToken string `json:"UserToken"`
+	VpsName   string `json:"DomainName"`
+	Email     string `json:"Email"`
+}
+
+// Verifies the ownership of a user to a VPS
+func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
+	// Make sure all values exist
+	if userToken == "" {
+		return false
+	}
+	if vpsName == "" {
+		return false
+	}
+	if userEmail == "" {
+		return false
+	}
+
+	// Parse the config file
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	yamlConfig, err := ioutil.ReadFile(filename)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
+	var ConfigFile configFile
+	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+
+	// Execute the query checking for the user binding to the VPS
+	//checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)
+	checkOwnership := db.QueryRow("SELECT domain_name FROM domaininfo WHERE user_token = ? AND domain_name = ? AND user_email = ?", userToken, vpsName, userEmail)
+
+	var ownsVps bool
+
+	switch err := checkOwnership.Scan(&vpsName); err {
+	case sql.ErrNoRows:
+		ownsVps = false
+		return ownsVps
+	case nil:
+		ownsVps = true
+	default:
+		l.Println(err.Error())
+	}
+
+	l.Printf("Owns VPS: %t", ownsVps)
+
+	if ownsVps == false {
+		l.Printf("Unauthorized access to %s requested!", vpsName)
+	}
+
+	/*if checkOwnership.Next(); bool(ownsVps) {
+		ownsVps = false
+		l.Printf("Owns VPS: %t", ownsVps)
+		return ownsVps
+	} else {
+		l.Printf("Unauthorized access to %s requested!", vpsName)
+		fmt.Println(checkOwnership.Next())
+		ownsVps = true
+		l.Printf("Owns VPS: %t", ownsVps)
+		return ownsVps
+	}*/
+	return ownsVps
+}
+
+func vncProxy(w http.ResponseWriter, r *http.Request) {
+
+	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
+	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
+	r.Header.Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	r.Header.Set("Access-Control-Allow-Headers", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "*")
+	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
+
+	decoder := json.NewDecoder(r.Body)
+	var t *vncProxyValues = &vncProxyValues{}
+
+	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+
+	// Decode the struct internally
+	err := decoder.Decode(&t)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+
+	if t.Email == "" {
+		return
+	}
+	if t.UserToken == "" {
+		return
+	}
+	if t.VpsName == "" {
+		return
+	}
+
+	ownsVps := verifyOwnership(t.UserToken, t.VpsName, t.Email)
+
+	if ownsVps != true {
+		authJsonString := fmt.Sprintf(`{"Unauthorized": "true"}`)
+		fmt.Fprintf(w, "%s\n", authJsonString)
+		l.Printf("%t\n", ownsVps)
+		return
+	}
+
+	// Open the config file
+	f, err := os.OpenFile("/etc/gammabyte/lsapi/vnc/vnc.conf",
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
+	defer f.Close()
+
+	dbvar := dbValues{}
+	result, err := db.Query("SELECT host_binding FROM domaininfo WHERE domain_name = ?", t.VpsName)
+	if err != nil {
+		l.Printf("Error querying DB for host binding for VM %s!", t.VpsName)
+		l.Printf("Error: %s\n", err.Error())
+		r.Body.Close()
+		return
+	}
+	for result.Next() {
+		result.Scan(&dbvar.hostBinding)
+	}
+	if dbvar.hostBinding == "" {
+		l.Printf("Error: Domain %s has no host binding!", t.VpsName)
+		r.Body.Close()
+		return
+	}
+	l.Printf("Domain %s is bound to host %s!", t.VpsName, dbvar.hostBinding)
+
+	result, err = db.Query("SELECT kvm_api_port FROM hostinfo WHERE hostname = ?", dbvar.hostBinding)
+	if err != nil {
+		l.Printf("Error querying DB for kvm port on host %s\n", dbvar.hostBinding)
+		l.Printf("Error: %s\n", err.Error())
+		r.Body.Close()
+		return
+	}
+	for result.Next() {
+		result.Scan(&dbvar.hostPort)
+	}
+	if dbvar.hostPort == "" {
+		l.Printf("Error: host %s has no KVM api port binding!", dbvar.hostBinding)
+		r.Body.Close()
+		return
+	}
+
+	url := fmt.Sprintf("http://%s:%s/api/vnc/proxy/create", dbvar.hostBinding, dbvar.hostPort)
+	sendBody := strings.NewReader(fmt.Sprintf(`{"UserToken": "%s", "Email": "%s", "DomainName": "%s"}`, t.UserToken, t.Email, t.VpsName))
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
+	resp, err := http.Post(url, "application/json", sendBody)
+
+	returnValues := returnVncValues{}
+	decoder = json.NewDecoder(resp.Body)
+	err = decoder.Decode(&returnValues)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
+
+	// Append the string we generated earlier to the config file
+	if _, err := f.WriteString(fmt.Sprintf("%s\n", returnValues.AppendString)); err != nil {
+		l.Println(err.Error())
+		return
+	}
+
+	// Generate a URL that specifies the token & proper host:port combination, then send it to the API request endpoint as a JSON string
+	l.Printf("%s\n", returnValues.VncURL)
+	fmt.Fprintf(w, "{\"VncURL\": \"%s\"}\n", returnValues.VncURL)
+}
+
+type returnVncValues struct {
+	VncURL       string `json:"VncURL"`
+	AppendString string `json:"AppendString"`
 }

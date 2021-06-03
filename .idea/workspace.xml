@@ -4,11 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Implemented VNC request load balancer">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Began fixing VNC options">
       <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/auth/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/auth/main.go" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kvm/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lb/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/lb/main.go" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -153,7 +153,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Implemented User creation, NoVNC instance provisioning, &amp; security checks" />
     <MESSAGE value="Changed directory structure" />
     <MESSAGE value="Fixed auth gofile" />
     <MESSAGE value="Added go.mod &amp; go.sum" />
@@ -178,7 +177,8 @@
     <MESSAGE value="More prepared statements" />
     <MESSAGE value="Even more prepared statements" />
     <MESSAGE value="Implemented VNC request load balancer" />
-    <option name="LAST_COMMIT_MESSAGE" value="Implemented VNC request load balancer" />
+    <MESSAGE value="Began fixing VNC options" />
+    <option name="LAST_COMMIT_MESSAGE" value="Began fixing VNC options" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

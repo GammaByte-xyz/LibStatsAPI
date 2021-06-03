@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -256,10 +255,18 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 
 	// Find the VPS by name provided by the frontend UI
-	vps, _ := conn.LookupDomainByName(t.VpsName)
+	vps, err := conn.LookupDomainByName(t.VpsName)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		return
+	}
 
 	// Get the XML data of the VPS, then parse it
-	xmlData, _ := vps.GetXMLDesc(0)
+	xmlData, err := vps.GetXMLDesc(0)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		return
+	}
 	v := ParseDomainXML(xmlData)
 
 	// Check to see if the VNC port is -1. If it is, we can't connect.
@@ -275,37 +282,11 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 	vncToken := GenerateSecureToken(24)
 
 	// Generate the string that will be appended to /etc/gammabyte/lsapi/vnc.conf
-	vncAppend := fmt.Sprintf("%s: localhost:%s\n", vncToken, vncPort)
-
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-
+	FQDN, err := fqdn.FqdnHostname()
 	if err != nil {
-		panic(err.Error())
+		l.Printf("Error: %s\n", err.Error())
 	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
-
-	// Get hostname of server
-	cmd := exec.Command("/bin/hostname", "-f")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	err = cmd.Run()
-	if err != nil {
-		l.Println(err.Error())
-		return
-	}
-	FQDN := out.String()
-	if err != nil {
-		l.Println(err.Error())
-		return
-	}
-
-	// Send values to master node
-	VncAppendRequest := fmt.Sprintf("{\"VncAppendRequest\": \"%s: %s:%s\", \"MasterKey\": \"%s\"}", vncToken, FQDN, vncPort, ConfigFile.MasterKey)
-	masterResponse := notifyMaster(VncAppendRequest)
-	l.Printf("Master response: %s\n", masterResponse)
+	vncAppend := fmt.Sprintf("%s: %s:%s", vncToken, FQDN, vncPort)
 
 	// Open the config file
 	f, err := os.OpenFile("/etc/gammabyte/lsapi/vnc/vnc.conf",
@@ -331,7 +312,7 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 	time.AfterFunc(3*time.Hour, func() { purgeOldConfig(vncToken, configPath, t.VpsName) })
 
 	// Generate a URL that specifies the token & proper host:port combination, then send it to the API request endpoint as a JSON string
-	URL := fmt.Sprintf("{\"VncURL\": \"https://vnc.gammabyte.xyz/vnc.html?host=vnc.gammabyte.xyz&port=443&path=websockify?token=%s\"}\n", vncToken)
+	URL := fmt.Sprintf(`{"VncURL": "https://vnc.gammabyte.xyz/vnc.html?host=vnc.gammabyte.xyz&port=443&path=websockify?token=%s", "AppendString": "%s"}`, vncToken, vncAppend)
 	l.Printf("%s\n", URL)
 	fmt.Fprintf(w, URL)
 }
@@ -353,7 +334,7 @@ func togglePower(w http.ResponseWriter, r *http.Request) {
 	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
-	// Set the maximum bytes able to be consumed by the API to prevent denial of service
+	// Set the maximum bytes able to be consumed by the API to mitigate denial of service
 	r.Body = http.MaxBytesReader(w, r.Body, 1048576)
 	r.Header.Set("Access-Control-Allow-Origin", "*.repl.co")
 	w.Header().Set("Access-Control-Allow-Origin", "*.repl.co")
