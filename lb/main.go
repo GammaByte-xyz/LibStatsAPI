@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Showmax/go-fqdn"
 	"github.com/Terry-Mao/goconf"
 	_ "github.com/go-sql-driver/mysql"
 	"golang.org/x/net/context"
@@ -16,6 +17,7 @@ import (
 	"log/syslog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -193,6 +195,7 @@ func main() {
 	for i = range hostnames {
 		l.Printf("%s\n", hostnames[i])
 	}
+	go startVncWebsocket()
 	handleRequests()
 
 }
@@ -964,4 +967,19 @@ func destroyVncToken(stringToDestroy string) {
 
 	l.Printf("Destroyed string in VNC config file matching value %s.\n", stringToDestroy)
 
+}
+
+func startVncWebsocket() {
+	FQDN, err := fqdn.FqdnHostname()
+	if err != nil {
+		l.Printf("Error getting FQDN! Error: %s\n", err.Error())
+		panic(err)
+	}
+	l.Printf("Successfully started VNC proxy with URL: http://%s:8401/vnc.html", FQDN)
+	cmd, err := exec.Command("/srv/noVNC/utils/websockify/run", "0.0.0.0:8401", "--token-plugin=TokenFile", "--token-source=/etc/gammabyte/lsapi/vnc/vnc.conf", "--log-file=/var/log/lsapi-vnc.log", "--record=/var/log/lsapi-vnc.session", "--web=/srv/noVNC").Output()
+	if err != nil {
+		l.Printf("Error starting VNC websocket: %s\n", err.Error())
+		panic(err)
+	}
+	l.Println(cmd)
 }

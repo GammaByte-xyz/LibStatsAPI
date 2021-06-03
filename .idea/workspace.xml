@@ -4,18 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Began fixing VNC options">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="More VNC optimizations">
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lb/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/lb/main.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/noVNC/utils/websockify/tests/latency.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/noVNC/utils/websockify/tests/latency.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/noVNC/utils/websockify/websockify.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/noVNC/utils/websockify/websockify.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
-  </component>
-  <component name="DatabaseLocalColorSettings">
-    <colors>
-      <entry key="c7c2ad06-d16c-4f49-8299-64fdcb7daddd" value="Green" />
-    </colors>
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -29,7 +28,7 @@
   <component name="GOROOT" url="file://$USER_HOME$/go/go1.16.4" />
   <component name="Git.Settings">
     <option name="PUSH_AUTO_UPDATE" value="true" />
-    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/src/noVNC/utils/websockify" />
   </component>
   <component name="GitSEFilterConfiguration">
     <file-type-list>
@@ -40,7 +39,7 @@
     </file-type-list>
   </component>
   <component name="ProjectId" id="1sUVS2zlEy8iYnAXAQ0oCwIvPAk" />
-  <component name="ProjectLevelVcsManager">
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
     <ConfirmationsSetting value="2" id="Add" />
   </component>
   <component name="ProjectViewState">
@@ -150,7 +149,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Changed directory structure" />
     <MESSAGE value="Fixed auth gofile" />
     <MESSAGE value="Added go.mod &amp; go.sum" />
     <MESSAGE value="Fixed MySQL" />
@@ -175,7 +173,8 @@
     <MESSAGE value="Even more prepared statements" />
     <MESSAGE value="Implemented VNC request load balancer" />
     <MESSAGE value="Began fixing VNC options" />
-    <option name="LAST_COMMIT_MESSAGE" value="Began fixing VNC options" />
+    <MESSAGE value="More VNC optimizations" />
+    <option name="LAST_COMMIT_MESSAGE" value="More VNC optimizations" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
