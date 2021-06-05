@@ -4,196 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="NA">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Removed noVNC source, will implement a `git pull` in setup script.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/kvm/setup" beforeDir="false" afterPath="$PROJECT_DIR$/setup" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lb/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/lb/main.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/.eslintignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/.eslintrc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/AUTHORS" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/LICENSE.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/error-handler.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/alt.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/clipboard.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/connect.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/ctrl.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/ctrlaltdel.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/disconnect.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/drag.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/error.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/esc.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/expander.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/fullscreen.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/handle.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/handle_bg.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/Makefile" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-120x120.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-144x144.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-152x152.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-16x16.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-192x192.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-24x24.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-32x32.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-48x48.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-60x60.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-64x64.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-72x72.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-76x76.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-96x96.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-icon-sm.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/icons/novnc-icon.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/info.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/keyboard.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/power.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/settings.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/tab.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/toggleextrakeys.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/warning.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/images/windows.svg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/README" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/cs.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/de.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/el.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/es.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/ja.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/ko.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/nl.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/pl.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/pt_BR.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/ru.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/sv.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/tr.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/zh_CN.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/locale/zh_TW.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/localization.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/sounds/CREDITS" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/sounds/bell.mp3" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/sounds/bell.oga" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/styles/Orbitron700.ttf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/styles/Orbitron700.woff" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/styles/base.css" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/ui.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/app/webutil.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/base64.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/decoders/copyrect.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/decoders/hextile.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/decoders/raw.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/decoders/rre.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/decoders/tight.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/decoders/tightpng.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/deflator.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/des.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/display.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/encodings.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/inflator.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/domkeytable.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/fixedkeys.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/gesturehandler.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/keyboard.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/keysym.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/keysymdef.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/util.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/vkeys.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/input/xtscancodes.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/rfb.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/util/browser.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/util/cursor.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/util/element.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/util/events.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/util/eventtarget.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/util/int.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/util/logging.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/util/strings.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/core/websock.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/API-internal.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/API.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/EMBEDDING.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/LIBRARY.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/LICENSE.BSD-2-Clause" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/LICENSE.BSD-3-Clause" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/LICENSE.MPL-2.0" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/LICENSE.OFL-1.1" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/flash_policy.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/links" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/notes" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/rfb_notes" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/rfbproto-3.3.pdf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/rfbproto-3.7.pdf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/docs/rfbproto-3.8.pdf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/karma.conf.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/package.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/.eslintrc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/Makefile" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/cs.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/de.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/el.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/es.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/fr.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/ja.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/ko.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/nl.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/noVNC.pot" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/pl.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/po2js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/pt_BR.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/ru.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/sv.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/tr.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/xgettext-html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/zh_CN.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/po/zh_TW.po" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/snap/hooks/configure" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/snap/local/svc_wrapper.sh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/snap/snapcraft.yaml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/.eslintrc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/assertions.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/fake.websocket.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/playback-ui.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/playback.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.base64.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.copyrect.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.deflator.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.display.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.gesturehandler.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.helper.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.hextile.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.int.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.keyboard.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.localization.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.raw.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.rfb.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.rre.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.tight.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.tightpng.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.util.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.websock.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/test.webutil.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/tests/vnc_playback.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/utils/.eslintrc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/utils/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/utils/b64-to-binary.pl" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/utils/genkeysymdef.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/utils/launch.sh" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/utils/u2x11" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/utils/use_require.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/utils/validate" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/LICENSE" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/README.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/utils/common.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/adler32.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/constants.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/crc32.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/deflate.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/gzheader.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/inffast.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/inflate.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/inftrees.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/messages.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/trees.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vendor/pako/lib/zlib/zstream.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vnc.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/noVNC/vnc_lite.html" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/setup" beforeDir="false" afterPath="$PROJECT_DIR$/setup" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -334,7 +147,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Cleaned up some code" />
     <MESSAGE value="Removed fatal/panic facilities if there is an error, as to keep the daemon running" />
     <MESSAGE value="More sanity checks &amp; added resource checks" />
     <MESSAGE value="Fixed some module issues" />
@@ -359,7 +171,8 @@
     <MESSAGE value="Implemented novnc src" />
     <MESSAGE value="Fixed submodules" />
     <MESSAGE value="NA" />
-    <option name="LAST_COMMIT_MESSAGE" value="NA" />
+    <MESSAGE value="Removed noVNC source, will implement a `git pull` in setup script." />
+    <option name="LAST_COMMIT_MESSAGE" value="Removed noVNC source, will implement a `git pull` in setup script." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
