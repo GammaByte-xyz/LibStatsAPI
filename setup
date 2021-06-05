@@ -1,0 +1,93 @@
+#!/bin/bash
+
+PS3='Select host type: '
+options=("Load Balancer" "Authentication Host" "KVM (Virtual Machine) Host" "Quit")
+select opt in "${options[@]}"
+do
+    case $opt in
+        "Load Balancer")
+            hostType="loadBalancerHost"
+            echo "Setting up load balancer..."
+            setupLoadBalancer
+            ;;
+        "Authentication Host")
+            hostType="authHost"
+            echo "Setting up authentication host..."
+            setupAuthHost
+            ;;
+        "KVM (Virtual Machine) Host")
+            hostType="kvmHost"
+            echo "Setting up KVM host..."
+            setupKvmHost
+            ;;
+        "Quit")
+            break
+            ;;
+        *) echo "invalid option $REPLY";;
+    esac
+done
+
+setupLoadBalancer() {
+
+cat <<EOT >> /etc/yum.repos.d/mariadb.repo
+# MariaDB 10.5 CentOS repository list - created 2021-06-04 18:19 UTC
+# http://downloads.mariadb.org/mariadb/repositories/
+[mariadb]
+name = MariaDB
+baseurl = http://yum.mariadb.org/10.5/centos8-amd64
+module_hotfixes=1
+gpgkey=https://yum.mariadb.org/RPM-GPG-KEY-MariaDB
+gpgcheck=1
+EOT
+
+  dnf -y install MariaDB-Server mariadb epel-release go
+  dnf -y upgrade
+  systemctl enable --now MariaDB-Server
+
+  cd lb || exit
+  go mod init libstatsapi/lb
+  go mod tidy
+  go build
+  cp lb /usr/bin/lb
+
+
+  read -p "MySQL User (cannot be 'root'): " mySqlUser
+  read -r -s -p "MySQL Password: " mySqlPass
+  echo "Creating database 'lsapi'"
+  mysql -e "CREATE DATABASE lsapi /*\!40100 DEFAULT CHARACTER SET utf8 */;"
+  echo "Creating user $mySqlUser"
+  mysql -e "CREATE USER ${mySqlUser}@localhost IDENTIFIED BY '${mySqlPass}';"
+  echo "Granting all privileges to $mySqlUser on DB 'lsapi'"
+  mysql -e "GRANT ALL PRIVILEGES ON lsapi.* TO ${mySqlUser}@localhost IDENTIFIED BY '${mySqlPass}';"
+  echo "Flushing privileges..."
+  mysql -e "FLUSH PRIVILEGES;"
+  echo "Creating tables & columns..."
+  mysql -e "CONNECT lsapi; CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, mac_address text, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text)"
+  echo "Done creating MySQL DB!"
+
+  mkdir -p /etc/gammabyte/lsapi
+  mkdir -p /etc/gammabyte/lsapi/vnc
+cat <<EOT >> /etc/gammabyte/lsapi/config-lb.yml
+##############################################
+# EDIT THIS BEFORE STARTING THE LOADBALANCER #
+##############################################
+
+volume_path: "/var/lib/libvirt/images"
+listen_port: "8082"
+listen_address: "0.0.0.0"
+vm_manufacturer: "yourVmManufacturer"
+
+###### CHANGE THESE ######
+sql_password: "yourSqlPassword"
+sql_user: "yourSqlUser"
+##########################
+
+domain_bandwidth: 1000
+virtual_network_subnet: "192.168.2"
+sql_address: "localhost"
+syslog_server: "yoursyslog.server.tld:514"
+auth_server: "localhost:8083"
+EOT
+  "${EDITOR:-nano}" /etc/gammabyte/lsapi/config-lb.yml || "${EDITOR:-vi}" /etc/gammabyte/lsapi/config-lb.yml
+
+}

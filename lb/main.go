@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/Showmax/go-fqdn"
 	"github.com/Terry-Mao/goconf"
+	"github.com/TwinProduction/go-color"
 	_ "github.com/go-sql-driver/mysql"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
@@ -59,7 +60,53 @@ func handleRequests() {
 	l.Fatal(http.ListenAndServe(listenAddr, nil))
 }
 
+func setup() {
+	configTemplate := `volume_path: "/var/lib/libvirt/images"
+# The path where VM volumes will be stored
+listen_port: "8080"
+# The port the load balancer will listen on
+listen_address: "0.0.0.0"
+# The listen address for the load balancer
+sql_password: "YourSecurePassword"
+# The password for your MySQL DB
+vm_manufacturer: "YourCompanyName"
+# The manufacturer that will show up internally for VMs created by LibStatsAPI
+sql_user: "YourSQLUser"
+# The user for your MySQL DB
+domain_bandwidth: 200
+# The maximum bandwidth a virtual machine can move, in Mbps
+virtual_network_subnet: "192.168.2"
+# The first three spaces of a local subnet (/24 maximum size)
+sql_address: "localhost"
+# The address of your MySQL DB Server
+syslog_server: "rsyslog:514"
+# The address of a remote syslog server 
+auth_server: "localhost:8083"
+# The address of your authentication server. This can be run on the same host as your load balancer.
+
+
+# SET THIS TO 'false' AFTER EDITING FILE #
+lock_node: "true"
+# SET THIS TO 'false' AFTER EDITING FILE #
+`
+	hostConfigTemplate := `[fqdn.yourhost.tld]
+addr 100.100.100.100
+hostname fqdn.yourhost.tld
+`
+	if _, err := os.Stat("/etc/gammabyte"); os.IsNotExist(err) {
+		os.Mkdir("/etc/gammabyte", 0644)
+		os.Mkdir("/etc/gammabyte/lsapi", 0644)
+		os.Mkdir("/etc/gammabyte/lsapi/vnc", 0644)
+		ioutil.WriteFile("/etc/gammabyte/lsapi/vnc/vnc.conf", []byte(nil), 0644)
+		ioutil.WriteFile("/etc/gammabyte/lsapi/config.yml", []byte(configTemplate), 0644)
+		ioutil.WriteFile("/etc/gammabyte/lsapi/hosts.conf", []byte(hostConfigTemplate), 0644)
+		l.Fatal(color.Colorize(color.Red, color.Ize(color.Bold, "Error: Please configure the load balancer in '/etc/gammabyte/lsapi/config.yml' and create a list of hosts in '/etc/gammabyte/lsapi/hosts.conf'.")))
+	}
+}
+
 func main() {
+	setup()
+
 	// Check to see if config file exists
 	if fileExists("/etc/gammabyte/lsapi/config.yml") {
 		l.Println("Config file found.")
@@ -80,6 +127,9 @@ func main() {
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
+	}
+	if ConfigFile.LockNode != "false" {
+		l.Fatal(color.Colorize(color.Red, color.Ize(color.Bold, "Error: 'lock_node' must be set to 'false' in '/etc/gammabyte/lsapi/config.yml' for application to run.")))
 	}
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
@@ -214,6 +264,7 @@ type configFile struct {
 	MasterIP        string `yaml:"master_ip"`
 	SyslogAddress   string `yaml:"syslog_server"`
 	AuthServer      string `yaml:"auth_server"`
+	LockNode        string `yaml:"lock_node"`
 }
 
 type requestProxyValue struct {
