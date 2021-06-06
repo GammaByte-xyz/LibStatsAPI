@@ -1,36 +1,10 @@
 #!/bin/bash
 
-PS3='Select host type: '
-options=("Load Balancer (Master)" "Authentication Host" "KVM (Virtual Machine) Host" "Quit")
-select opt in "${options[@]}"
-do
-    case $opt in
-        "Load Balancer (Master)")
-            hostType="loadBalancerHost"
-            echo "Setting up load balancer..."
-            setupLoadBalancer
-            ;;
-        "Authentication Host")
-            hostType="authHost"
-            echo "Setting up authentication host..."
-            setupAuthHost
-            ;;
-        "KVM (Virtual Machine) Host")
-            hostType="kvmHost"
-            echo "Setting up KVM host..."
-            setupKvmHost
-            ;;
-        "Quit")
-            break
-            ;;
-        *) echo "invalid option $REPLY";;
-    esac
-done
-
 setupLoadBalancer() {
+  CURDIR=$(pwd)
   dnf -y remove mariadb*
 
-cat <<EOT >> /etc/yum.repos.d/mariadb.repo
+cat <<EOT > /etc/yum.repos.d/mariadb.repo
 # MariaDB 10.5 CentOS repository list - created 2021-06-04 18:19 UTC
 # http://downloads.mariadb.org/mariadb/repositories/
 [mariadb]
@@ -49,27 +23,33 @@ EOT
   go mod init libstatsapi/lb
   go mod tidy
   go build
-  cp lb /usr/bin/lsapi-lb
+  mv lb /usr/bin/lsapi-lb
 
-  git pull https://github.com/noVNC/noVNC
-  mv noVNC /srv/ || mkdir -p /srv/ && mv noVNC /srv/
+  mkdir /srv/
+  git clone https://github.com/noVNC/noVNC /srv/noVNC
+  git clone https://github.com/novnc/websockify /srv/noVNC/utils/websockify
 
   read -p "MySQL User (cannot be 'root'): " mySqlUser
   read -r -s -p "MySQL Password: " mySqlPass
   echo "Creating database 'lsapi'"
   mysql -e "CREATE DATABASE lsapi /*\!40100 DEFAULT CHARACTER SET utf8 */;"
   echo "Creating user $mySqlUser"
-  mysql -e "CREATE USER ${mySqlUser}@localhost IDENTIFIED BY '${mySqlPass}';"
+  mysql -e "CREATE USER ${mySqlUser} IDENTIFIED BY '${mySqlPass}';"
   echo "Granting all privileges to $mySqlUser on DB 'lsapi'"
-  mysql -e "GRANT ALL PRIVILEGES ON lsapi.* TO ${mySqlUser}@localhost IDENTIFIED BY '${mySqlPass}';"
+  mysql -e "GRANT ALL PRIVILEGES ON lsapi.* TO ${mySqlUser}@'%' IDENTIFIED BY '${mySqlPass}';"
   echo "Flushing privileges..."
   mysql -e "FLUSH PRIVILEGES;"
   echo "Done creating MySQL DB!"
 
+  sed -i 's/#bind-address=0.0.0.0/bind-address=0.0.0.0/' /etc/my.cnf.d/server.cnf
+  sed -i 's/#bind-address=127.0.0.1/bind-address=0.0.0.0/' /etc/my.cnf.d/server.cnf
+  sed -i 's/bind-address=127.0.0.1/bind-address=0.0.0.0/' /etc/my.cnf.d/server.cnf
+  systemctl restart mariadb
+
   mkdir -p /etc/gammabyte/lsapi
   mkdir -p /etc/gammabyte/lsapi/vnc
 
-cat <<EOT >> /etc/systemd/system/lsapi-lb.service
+cat <<EOT > /etc/systemd/system/lsapi-lb.service
 [Unit]
 Description=LibStatsAPI Load Balancer daemon
 Documentation=https://github.com/gammabyte-xyz/LibStatsAPI
@@ -86,30 +66,209 @@ EOT
   systemctl daemon-reload
   systemctl enable lsapi-lb
 
-cat <<EOT >> /etc/gammabyte/lsapi/config-lb.yml
+cat <<EOT > /etc/gammabyte/lsapi/config-lb.yml
 ##############################################
 # EDIT THIS BEFORE STARTING THE LOADBALANCER #
 ##############################################
 
-volume_path: "/var/lib/libvirt/images"
 listen_port: "8082"
 listen_address: "0.0.0.0"
-vm_manufacturer: "yourVmManufacturer"
+
+###### CHANGE THESE ######
+sql_password: "$mySqlPass"
+sql_user: "$mySqlUser"
+##########################
+
+sql_address: "localhost"
+syslog_server: "yoursyslog.server.tld:514"
+auth_server: "localhost:8083"
+
+
+# Setting this to true will prevent this host from proxying requests to internal nodes.
+lock_node: false
+EOT
+  "${EDITOR:-nano}" /etc/gammabyte/lsapi/config-lb.yml || "${EDITOR:-vi}" /etc/gammabyte/lsapi/config-lb.yml
+
+cat <<EOT > /etc/gammabyte/lsapi/hosts.conf
+# Add a host here with the FQDN (Must be resolvable)
+[fqdn.of.yourhost.tld]
+addr 1.2.3.4
+hostname fqdn.of.yourhost.tld
+EOT
+
+  "${EDITOR:-nano}" /etc/gammabyte/lsapi/hosts.conf || "${EDITOR:-vi}" /etc/gammabyte/lsapi/hosts.conf
+
+  systemctl start lsapi-lb
+  echo ""
+  echo "Done. A Systemd service (lsapi-lb) has been enabled on boot and started."
+  cd $CURDIR || exit
+}
+
+setupAuthHost() {
+  CURDIR=$(pwd)
+  cd auth || exit
+  dnf -y install git go epel-release
+  dnf -y upgrade
+  dnf -y install mariadb-client || dnf -y install MariaDB-client
+
+  go mod init libstatsapi/auth
+  go mod tidy
+  go build
+  mv auth /usr/bin/lsapi-auth
+
+  cat <<EOT > /etc/gammabyte/lsapi/config-auth.yml
+##############################################
+# EDIT THIS BEFORE STARTING THE LOADBALANCER #
+##############################################
+
+auth_listen_port: "8083"
+listen_address: "0.0.0.0"
 
 ###### CHANGE THESE ######
 sql_password: "yourSqlPassword"
 sql_user: "yourSqlUser"
+sql_address: "localhost"
 ##########################
 
-domain_bandwidth: 1000
-virtual_network_subnet: "192.168.2"
-sql_address: "localhost"
 syslog_server: "yoursyslog.server.tld:514"
 auth_server: "localhost:8083"
 EOT
-  "${EDITOR:-nano}" /etc/gammabyte/lsapi/config-lb.yml || "${EDITOR:-vi}" /etc/gammabyte/lsapi/config-lb.yml
+  "${EDITOR:-nano}" /etc/gammabyte/lsapi/config-auth.yml || "${EDITOR:-vi}" /etc/gammabyte/lsapi/config-auth.yml
 
-echo ""
-echo "Done. A Systemd service has been enabled on boot. To start the load balancer now, please run 'systemctl start lsapi-lb'."
+cat <<EOT > /etc/systemd/system/lsapi-auth.service
+[Unit]
+Description=LibStatsAPI Authentication API daemon
+Documentation=https://github.com/gammabyte-xyz/LibStatsAPI
+Wants=NetworkManager.service
+After=NetworkManager.service
+
+[Service]
+ExecStart=/usr/bin/lsapi-auth
+
+[Install]
+WantedBy=multi-user.target
+EOT
+
+  systemctl daemon-reload
+  systemctl enable lsapi-auth --now
+  cd $CURDIR || exit
+  echo "Done. A Systemd service (lsapi-auth) has been enabled on boot and started."
 
 }
+
+setupKvmHost() {
+  CURDIR=$(pwd)
+  dnf -y install libvirt virt-install libvirt-devel qemu-kvm curl wget
+  cd kvm || exit
+  go mod init libstatsapi
+  go mod tidy
+  go build
+  mv libstatsapi /usr/bin/libstatsapi
+  cd ..
+  cd host || exit
+  go mod init libstatsapi/host
+  go mod tidy
+  go build
+  mv host /usr/bin/lsapi-host
+
+  cat <<EOT > /etc/systemd/system/lsapi-kvm.service
+[Unit]
+Description=LibStatsAPI Virtualization API daemon
+Documentation=https://github.com/gammabyte-xyz/LibStatsAPI
+Wants=NetworkManager.service
+After=NetworkManager.service
+
+[Service]
+ExecStart=/usr/bin/libstatsapi
+
+[Install]
+WantedBy=multi-user.target
+EOT
+
+  cat <<EOT > /etc/systemd/system/lsapi-host.service
+[Unit]
+Description=LibStatsAPI Host Stats API daemon
+Documentation=https://github.com/gammabyte-xyz/LibStatsAPI
+Wants=NetworkManager.service
+After=NetworkManager.service
+
+[Service]
+ExecStart=/usr/bin/lsapi-host
+
+[Install]
+WantedBy=multi-user.target
+EOT
+
+  cat <<EOT > /etc/gammabyte/lsapi/config-kvm.yml
+volume_path: "/var/lib/libvirt/images"
+listen_port: "8082"
+listen_address: "0.0.0.0"
+
+#### CHANGE THESE ####
+sql_password: "yourSqlPassword"
+sql_user: "yourSqlUser"
+vm_manufacturer: "yourPreferredManufacturer"
+sql_address: "fqdn.yoursqlserver.tld"
+master_ip: "fqdn.your-loadbalancer.tld"
+######################
+
+domain_bandwidth: 1000
+virtual_network_subnet: "192.168.2"
+syslog_server: "fqdn.syslog.tld:514"
+auth_server: "fqdn.auth-host.tld:8083"
+EOT
+
+  "${EDITOR:-nano}" /etc/gammabyte/lsapi/config-kvm.yml || "${EDITOR:-vi}" /etc/gammabyte/lsapi/config-kvm.yml
+
+  systemctl daemon-reload
+  systemctl enable --now lsapi-kvm lsapi-host
+  if [[ "$(getenforce)" == "Enforcing" ]]; then
+  /sbin/restorecon -v /usr/bin/libstatsapi
+  /sbin/restorecon -v /usr/bin/lsapi-host
+  setsebool -P nis_enabled 1
+  ausearch -c 'lsapi-host' --raw | audit2allow -M my-lsapihost
+  semodule -X 300 -i my-lsapihost.pp
+  ausearch -c 'libstatsapi' --raw | audit2allow -M my-libstatsapi
+  semodule -X 300 -i my-libstatsapi.pp
+  ausearch -c '(statsapi)' --raw | audit2allow -M my-statsapi
+  semodule -X 300 -i my-statsapi.pp
+  rm -f my-libstatsapi.*
+  rm -f my-statsapi.*
+  rm -f my-lsapihost.*
+  systemctl restart lsapi-kvm
+  fi
+
+  cd $CURDIR || exit
+  echo "Done. A Systemd service (lsapi-kvm) has been enabled on boot and started."
+}
+
+
+PS3='Select host type: '
+options=("Load Balancer (Master)" "Authentication Host" "KVM (Virtual Machine) Host" "Quit")
+select opt in "${options[@]}"
+do
+    case $opt in
+        "Load Balancer (Master)")
+            hostType="loadBalancerHost"
+            echo "Setting up load balancer..."
+            setupLoadBalancer
+            break
+            ;;
+        "Authentication Host")
+            hostType="authHost"
+            echo "Setting up authentication host..."
+            setupAuthHost
+            break
+            ;;
+        "KVM (Virtual Machine) Host")
+            hostType="kvmHost"
+            echo "Setting up KVM host..."
+            setupKvmHost
+            break
+            ;;
+        "Quit")
+            break
+            ;;
+        *) echo "invalid option $REPLY";;
+    esac
+done

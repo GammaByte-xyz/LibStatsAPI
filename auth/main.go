@@ -60,14 +60,14 @@ const (
 // Main function that always runs first
 func main() {
 	// Check to see if config file exists
-	if fileExists("/etc/gammabyte/lsapi/config.yml") {
+	if fileExists("/etc/gammabyte/lsapi/config-auth.yml") {
 		l.Println("Config file found.")
 	} else {
-		l.Println("Config file '/etc/gammabyte/lsapi/config.yml' not found!")
+		l.Println("Config file '/etc/gammabyte/lsapi/config-auth.yml' not found!")
 	}
 
 	// Parse the config file
-	filename, err = filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, err = filepath.Abs("/etc/gammabyte/lsapi/config-auth.yml")
 	if err != nil {
 		l.Printf("Error: %s\n", err.Error())
 		panic(err.Error())
@@ -273,7 +273,11 @@ func verifyToken(w http.ResponseWriter, r *http.Request) {
 		l.Printf("User %s token was incorrect!", verify.Email)
 		return
 	}
-	rows.Close()
+	err = rows.Close()
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
 
 }
 

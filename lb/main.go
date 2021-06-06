@@ -29,7 +29,7 @@ var (
 	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
 	logFile, _      = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", 2)
+	l               = log.New(writeLog, "[LibStatsAPI-ALB] ", log.Ldate|log.Ltime|log.LUTC|log.Lmsgprefix|log.Lmicroseconds|log.LstdFlags|log.Llongfile|log.Lshortfile)
 	db              *sql.DB
 	filename        string
 	yamlConfig      []byte
@@ -38,7 +38,7 @@ var (
 )
 
 func getSyslogServer() string {
-	filename, _ = filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ = filepath.Abs("/etc/gammabyte/lsapi/config-lb.yml")
 	yamlConfig, err = ioutil.ReadFile(filename)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
@@ -61,46 +61,39 @@ func handleRequests() {
 }
 
 func setup() {
-	configTemplate := `volume_path: "/var/lib/libvirt/images"
-# The path where VM volumes will be stored
-listen_port: "8080"
-# The port the load balancer will listen on
+	configTemplate := `##############################################
+# EDIT THIS BEFORE STARTING THE LOADBALANCER #
+##############################################
+
+listen_port: "8082"
 listen_address: "0.0.0.0"
-# The listen address for the load balancer
-sql_password: "YourSecurePassword"
-# The password for your MySQL DB
-vm_manufacturer: "YourCompanyName"
-# The manufacturer that will show up internally for VMs created by LibStatsAPI
-sql_user: "YourSQLUser"
-# The user for your MySQL DB
-domain_bandwidth: 200
-# The maximum bandwidth a virtual machine can move, in Mbps
-virtual_network_subnet: "192.168.2"
-# The first three spaces of a local subnet (/24 maximum size)
+
+###### CHANGE THESE ######
+sql_password: "yourSqlPassword"
+sql_user: "yourSqlUser"
+##########################
+
 sql_address: "localhost"
-# The address of your MySQL DB Server
-syslog_server: "rsyslog:514"
-# The address of a remote syslog server 
+syslog_server: "yoursyslog.server.tld:514"
 auth_server: "localhost:8083"
-# The address of your authentication server. This can be run on the same host as your load balancer.
 
 
-# SET THIS TO 'false' AFTER EDITING FILE #
-lock_node: "true"
-# SET THIS TO 'false' AFTER EDITING FILE #
+# Setting this to true will prevent this host from proxying requests to internal nodes.
+lock_node: false
 `
-	hostConfigTemplate := `[fqdn.yourhost.tld]
-addr 100.100.100.100
-hostname fqdn.yourhost.tld
+	hostConfigTemplate := `# Add a host here with the FQDN (Must be resolvable)
+[fqdn.of.yourhost.tld]
+addr 1.2.3.4
+hostname fqdn.of.yourhost.tld
 `
 	if _, err := os.Stat("/etc/gammabyte"); os.IsNotExist(err) {
 		os.Mkdir("/etc/gammabyte", 0644)
 		os.Mkdir("/etc/gammabyte/lsapi", 0644)
 		os.Mkdir("/etc/gammabyte/lsapi/vnc", 0644)
 		ioutil.WriteFile("/etc/gammabyte/lsapi/vnc/vnc.conf", []byte(nil), 0644)
-		ioutil.WriteFile("/etc/gammabyte/lsapi/config.yml", []byte(configTemplate), 0644)
+		ioutil.WriteFile("/etc/gammabyte/lsapi/config-lb.yml", []byte(configTemplate), 0644)
 		ioutil.WriteFile("/etc/gammabyte/lsapi/hosts.conf", []byte(hostConfigTemplate), 0644)
-		l.Fatal(color.Colorize(color.Red, color.Ize(color.Bold, "Error: Please configure the load balancer in '/etc/gammabyte/lsapi/config.yml' and create a list of hosts in '/etc/gammabyte/lsapi/hosts.conf'.")))
+		l.Fatal(color.Colorize(color.Red, color.Ize(color.Bold, "Error: Please configure the load balancer in '/etc/gammabyte/lsapi/config-lb.yml' and create a list of hosts in '/etc/gammabyte/lsapi/hosts.conf'.")))
 	}
 }
 
@@ -108,15 +101,15 @@ func main() {
 	setup()
 
 	// Check to see if config file exists
-	if fileExists("/etc/gammabyte/lsapi/config.yml") {
+	if fileExists("/etc/gammabyte/lsapi/config-lb.yml") {
 		l.Println("Config file found.")
 	} else {
-		l.Println("Config file '/etc/gammabyte/lsapi/config.yml' not found!")
+		l.Println("Config file '/etc/gammabyte/lsapi/config-lb.yml' not found!")
 		panic("Config file not found.")
 	}
 
 	// Parse the config file
-	filename, err = filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, err = filepath.Abs("/etc/gammabyte/lsapi/config-lb.yml")
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
 	}
@@ -129,19 +122,19 @@ func main() {
 		l.Fatalf("Error: %s\n", err.Error())
 	}
 	if ConfigFile.LockNode != "false" {
-		l.Fatal(color.Colorize(color.Red, color.Ize(color.Bold, "Error: 'lock_node' must be set to 'false' in '/etc/gammabyte/lsapi/config.yml' for application to run.")))
+		l.Fatal(color.Colorize(color.Red, color.Ize(color.Bold, "Error: 'lock_node' must be set to 'false' in '/etc/gammabyte/lsapi/config-lb.yml' for application to run.")))
 	}
 
 	ctx, cancelfunc := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
 
-	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_DEBUG, "[LibStatsAPI-ALB]")
+	remoteSyslog, _ = syslog.Dial("udp", getSyslogServer(), syslog.LOG_INFO, "")
 	logFile, err = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
 	}
 	writeLog = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
-	l = log.New(writeLog, "[LibStatsAPI-ALB] ", log.Ldate|log.Ltime|log.LUTC|log.Lmsgprefix|log.Lmicroseconds|log.LstdFlags)
+	l = log.New(writeLog, "[LibStatsAPI-ALB] ", log.Ldate|log.Ltime|log.LUTC|log.Lmsgprefix|log.Lmicroseconds|log.LstdFlags|log.Llongfile|log.Lshortfile)
 
 	// Connect to MariaDB
 	dbConnectString := fmt.Sprintf("%s:%s@tcp(%s:3306)/", ConfigFile.SqlUser, ConfigFile.SqlPassword, ConfigFile.SqlAddress)
@@ -837,15 +830,6 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	if userEmail == "" {
 		return false
 	}
-
-	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
-	yamlConfig, err := ioutil.ReadFile(filename)
-	if err != nil {
-		l.Printf("Error: %s\n", err.Error())
-	}
-	var ConfigFile configFile
-	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
 
 	// Execute the query checking for the user binding to the VPS
 	//checkQuery := fmt.Sprintf("select domain_name from domaininfo where user_token = '%s' and domain_name = '%s' and user_email = '%s'", userToken, vpsName, userEmail)

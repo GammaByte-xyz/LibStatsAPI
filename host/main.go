@@ -36,7 +36,7 @@ var (
 )
 
 func getSyslogServer() string {
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
@@ -74,14 +74,14 @@ type configFile struct {
 
 func main() {
 	// Check to see if config file exists
-	if fileExists("/etc/gammabyte/lsapi/config.yml") {
+	if fileExists("/etc/gammabyte/lsapi/config-kvm.yml") {
 		l.Println("Config file found.")
 	} else {
-		l.Println("Config file '/etc/gammabyte/lsapi/config.yml' not found!")
+		l.Println("Config file '/etc/gammabyte/lsapi/config-kvm.yml' not found!")
 	}
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
 		panic(err)
@@ -267,11 +267,16 @@ func getGeoLocation(wanIP string) string {
 
 	// Use freegeoip.net to get a JSON response
 	// There is also /xml/ and /csv/ formats available
-	response, err := http.Get("http://api.ipstack.com/" + wanIP + "?access_key=c812ab47e0a61807ce9de69d29050268")
+	response, err = http.Get("http://api.ipstack.com/" + wanIP + "?access_key=c812ab47e0a61807ce9de69d29050268")
 	if err != nil {
 		l.Printf("Error getting WAN IP: %s\n", err.Error())
 	}
-	defer response.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err = Body.Close()
+		if err != nil {
+			l.Println(err.Error())
+		}
+	}(response.Body)
 	// response.Body() is a reader type. We have
 	// to use ioutil.ReadAll() to read the data
 	// in to a byte slice(string)

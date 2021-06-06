@@ -37,7 +37,7 @@ var (
 )
 
 func getSyslogServer() string {
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
 		l.Fatalf("Error: %s\n", err.Error())
@@ -68,7 +68,7 @@ func handleRequests() {
 	http.DefaultClient.Timeout = time.Minute * 10
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
@@ -92,14 +92,14 @@ const (
 func main() {
 
 	// Check to see if config file exists
-	if fileExists("/etc/gammabyte/lsapi/config.yml") {
+	if fileExists("/etc/gammabyte/lsapi/config-kvm.yml") {
 		l.Println("Config file found.")
 	} else {
-		l.Println("Config file '/etc/gammabyte/lsapi/config.yml' not found!")
+		l.Println("Config file '/etc/gammabyte/lsapi/config-kvm.yml' not found!")
 	}
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
@@ -331,7 +331,7 @@ type togglePowerVars struct {
 
 func togglePower(w http.ResponseWriter, r *http.Request) {
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	// Set the maximum bytes able to be consumed by the API to mitigate denial of service
@@ -430,7 +430,7 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 	}
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
 		l.Printf("Error: %s\n", err.Error())
@@ -483,7 +483,7 @@ func verifyOwnership(userToken string, vpsName string, userEmail string) bool {
 
 /*func createUser(w http.ResponseWriter, r *http.Request) {
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
@@ -610,7 +610,7 @@ func genMac() string {
 // Retrieve statistics of the host
 func getStats(w http.ResponseWriter, r *http.Request) {
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -845,7 +845,7 @@ type usedResources struct {
 
 func notifyMaster(message string) string {
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	if err != nil {
 		l.Println(err.Error())
@@ -883,7 +883,7 @@ func notifyMaster(message string) string {
 func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool {
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
@@ -985,7 +985,7 @@ func ableToCreate(userToken string, ramSize int, cpuSize int, diskSize int) bool
 func createDomain(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
@@ -1528,7 +1528,7 @@ type dbValues struct {
 func setIP(network string, macAddr string, domainName string, qcow2Name string, userEmail string, userFullName string, userName string, userToken string, domainRam int, domainCpus int, domainStorage int) string {
 
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
@@ -1703,7 +1703,7 @@ func checkFile(filename string) error {
 // Get the existing domains and print them
 func getDomains(w http.ResponseWriter, r *http.Request) {
 	// Read the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	// Parse the config file
@@ -1764,15 +1764,19 @@ type deleteDomainStruct struct {
 
 func deleteDomain(w http.ResponseWriter, r *http.Request) {
 	// Parse the config file
-	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config.yml")
+	filename, _ := filepath.Abs("/etc/gammabyte/lsapi/config-kvm.yml")
 	yamlConfig, err := ioutil.ReadFile(filename)
 
 	if err != nil {
-		l.Println(err)
+		l.Println(err.Error())
 		return
 	}
 	var ConfigFile configFile
 	err = yaml.Unmarshal(yamlConfig, &ConfigFile)
+	if err != nil {
+		l.Println(err.Error())
+		return
+	}
 
 	// Create a new decoder
 	decoder := json.NewDecoder(r.Body)
