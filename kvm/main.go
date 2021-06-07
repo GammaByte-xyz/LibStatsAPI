@@ -8,22 +8,21 @@ import (
 	"fmt"
 	"github.com/Showmax/go-fqdn"
 	_ "github.com/go-sql-driver/mysql"
-	"io"
-	"log/syslog"
-	"strconv"
-	"strings"
-	//uuid "github.com/google/uuid"
 	"github.com/libvirt/libvirt-go"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
+	"io"
 	"io/ioutil"
 	"libvirt.org/libvirt-go-xml"
 	"log"
+	"log/syslog"
 	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -1273,9 +1272,27 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 		l.Fatalf("Network %s not found!\n", t.Network)
 	}
 
-	installCD := fmt.Sprintf("%sisos/netboot.xyz.iso", ConfigFile.VolumePath)
-
 	var confDevices *libvirtxml.DomainDeviceList = &libvirtxml.DomainDeviceList{
+		Channels: []libvirtxml.DomainChannel{
+			libvirtxml.DomainChannel{
+				Source: &libvirtxml.DomainChardevSource{
+					UNIX: &libvirtxml.DomainChardevSourceUNIX{
+						Mode:      "",
+						Path:      "",
+						Reconnect: nil,
+						SecLabel:  nil,
+					},
+				},
+				Protocol: &libvirtxml.DomainChardevProtocol{
+					Type: "unix",
+				},
+				Target: &libvirtxml.DomainChannelTarget{
+					VirtIO: &libvirtxml.DomainChannelTargetVirtIO{
+						Name: "org.qemu.guest_agent.0",
+					},
+				},
+			},
+		},
 		Disks: []libvirtxml.DomainDisk{
 			libvirtxml.DomainDisk{
 				Device: "cdrom",
@@ -1285,7 +1302,7 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 				},
 				Source: &libvirtxml.DomainDiskSource{
 					File: &libvirtxml.DomainDiskSourceFile{
-						File: installCD,
+						File: fmt.Sprintf("%sisos/netboot.xyz.iso", ConfigFile.VolumePath),
 					},
 				},
 				Target: &libvirtxml.DomainDiskTarget{
@@ -1807,10 +1824,11 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		var d dbValues
 		//queryData := fmt.Sprintf("SELECT domain_name, ip_address, mac_address, ram, vcpus, storage, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name ='%s'", t.VpsName)
 		//l.Println(queryData)
-		err := db.QueryRow("SELECT domain_name, ip_address, mac_address, ram, vcpus, storage, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name = ?", t.VpsName).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.Ram, &d.Vcpus, &d.Storage, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
+		err = db.QueryRow("SELECT domain_name, ip_address, mac_address, ram, vcpus, storage, network, disk_path, time_created, user_email, user_full_name, username FROM domaininfo WHERE domain_name = ?", t.VpsName).Scan(&d.DomainName, &d.IpAddress, &d.MacAddress, &d.Ram, &d.Vcpus, &d.Storage, &d.NetworkName, &d.DiskPath, &d.TimeCreated, &d.UserEmail, &d.UserFullName, &d.UserName)
 		l.Printf("Domain name: %s\n Ip Address: %s\n Mac Address: %s\n RAM: %dGB\n vCPUS: %d\n Storage: %dGB\n Network Name: %s\n Disk Path: %s\n Date Created: %s\n User Email: %s\n User's Full Name: %s\n Username: %s\n", d.DomainName, d.IpAddress, d.MacAddress, d.Ram, d.Vcpus, d.Storage, d.NetworkName, d.DiskPath, d.TimeCreated, d.UserEmail, d.UserFullName, d.UserName)
 		if err != nil {
 			l.Println(err.Error())
+			return
 		}
 
 		dhSection := libvirt.NetworkUpdateSection(4)
@@ -1829,6 +1847,7 @@ func deleteDomain(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			fmt.Fprintf(w, "Could not find network %s\n", d.NetworkName)
 			l.Printf("Could could find network %s\n", d.NetworkName)
+			return
 		} else {
 			fmt.Fprintf(w, "Successfully queried network %s\n", d.NetworkName)
 			l.Printf("Successfully queried network %s\n", d.NetworkName)
