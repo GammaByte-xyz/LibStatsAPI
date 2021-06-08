@@ -29,7 +29,7 @@ import (
 // Set global variables
 var (
 	remoteSyslog, _ = syslog.Dial("udp", "localhost:514", syslog.LOG_DEBUG, "[LibStatsAPI-KVM]")
-	logFile, err    = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
+	logFile, _      = os.OpenFile("/var/log/lsapi.log", os.O_APPEND|os.O_RDWR|os.O_CREATE, 0644)
 	writeLog        = io.MultiWriter(os.Stdout, logFile, remoteSyslog)
 	l               = log.New(writeLog, "[LibStatsAPI-KVM] ", 2)
 	db              *sql.DB
@@ -63,7 +63,6 @@ func handleRequests() {
 	http.HandleFunc("/api/kvm/delete/domain", deleteDomain)
 	http.HandleFunc("/api/vnc/proxy/create", vncProxy)
 	http.HandleFunc("/api/kvm/power/toggle", togglePower)
-	//http.HandleFunc("/api/auth/user/create", createUser)
 	http.DefaultClient.Timeout = time.Minute * 10
 
 	// Parse the config file
@@ -406,6 +405,14 @@ func togglePower(w http.ResponseWriter, r *http.Request) {
 			returnJson := fmt.Sprintf(`{"Success": "false"}`)
 			fmt.Fprintf(w, "%s\n", returnJson)
 			return
+		} else if State == 2 {
+			err = dom.Create()
+			if err != nil {
+				l.Printf("Error: %s\n", err.Error())
+				returnJson := fmt.Sprintf(`{"Success": "false"`)
+				fmt.Fprintf(w, "%s\n", returnJson)
+				return
+			}
 		} else {
 			l.Println(err.Error())
 			returnJson := fmt.Sprintf(`{"Success": "true", "State": "On"}`)
@@ -1280,7 +1287,12 @@ func createDomain(w http.ResponseWriter, r *http.Request) {
 						Mode:      "",
 						Path:      "",
 						Reconnect: nil,
-						SecLabel:  nil,
+						SecLabel: []libvirtxml.DomainDeviceSecLabel{
+							libvirtxml.DomainDeviceSecLabel{
+								Model: "selinux",
+								Label: "dynamic",
+							},
+						},
 					},
 				},
 				Protocol: &libvirtxml.DomainChardevProtocol{

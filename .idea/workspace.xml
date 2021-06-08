@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Finished first functional draft of setup script">
+    <list default="true" id="ff6c8016-c374-41df-a236-ed4401d3fe3b" name="Default Changelist" comment="Implemented guest agent support">
+      <change afterPath="$PROJECT_DIR$/billing/main.go" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/billing/types.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/sqldialects.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/sqldialects.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/kvm/main.go" beforeDir="false" afterPath="$PROJECT_DIR$/kvm/main.go" afterDir="false" />
     </list>
@@ -18,8 +21,8 @@
       <list>
         <option value="HTTP Request" />
         <option value="Go File" />
-        <option value="Go Application" />
         <option value="Python Script" />
+        <option value="Go Application" />
       </list>
     </option>
   </component>
@@ -147,7 +150,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
-    <MESSAGE value="Fixed some module issues" />
     <MESSAGE value="Fixed simple println statement" />
     <MESSAGE value="Added per-domain authentication for" />
     <MESSAGE value="Added per-domain authentication" />
@@ -172,7 +174,8 @@
     <MESSAGE value="Removed noVNC source, will implement a `git pull` in setup script." />
     <MESSAGE value="Added LB portion to setup script" />
     <MESSAGE value="Finished first functional draft of setup script" />
-    <option name="LAST_COMMIT_MESSAGE" value="Finished first functional draft of setup script" />
+    <MESSAGE value="Implemented guest agent support" />
+    <option name="LAST_COMMIT_MESSAGE" value="Implemented guest agent support" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
