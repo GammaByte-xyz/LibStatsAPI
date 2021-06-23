@@ -1,15 +1,22 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/Showmax/go-fqdn"
 	"github.com/Terry-Mao/goconf"
 	"github.com/TwinProduction/go-color"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/klauspost/compress/gzhttp"
 	"golang.org/x/net/context"
 	"gopkg.in/yaml.v3"
 	"io"
@@ -17,6 +24,7 @@ import (
 	"log"
 	"log/syslog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,6 +43,7 @@ var (
 	yamlConfig      []byte
 	err             error
 	ConfigFile      configFile
+	rootCAs, _      = x509.SystemCertPool()
 )
 
 func getSyslogServer() string {
@@ -49,15 +58,26 @@ func getSyslogServer() string {
 	return ConfigFile.SyslogAddress
 }
 
-func handleRequests() {
+func handleRequests(hostname string) {
 	http.HandleFunc("/api/auth", proxyRequestsAuth)
 	http.HandleFunc("/api/kvm", proxyRequestsKvm)
 	http.HandleFunc("/api/vnc", vncProxy)
+	http.HandleFunc("/api/data", handleData)
+	http.HandleFunc("/api/image", handleImages)
+	http.HandleFunc("/image", serveImages)
+	http.HandleFunc("/volume", downloadVolumeBackup)
+	http.HandleFunc("/api/tls/getcert", sendCert)
+	http.HandleFunc("/files/prepare/volume", prepareVolume)
 
 	listenAddr := fmt.Sprintf("%s:%s", ConfigFile.ListenAddress, ConfigFile.ListenPort)
 
 	// Listen on specified port
-	l.Fatal(http.ListenAndServe(listenAddr, nil))
+	l.Fatal(http.ListenAndServeTLS(listenAddr, "/etc/pki/ca-trust/source/anchors/"+hostname+".crt", "/etc/pki/tls/private/"+hostname+".key", nil))
+}
+
+func handleFileServer(hostname string) {
+	http.HandleFunc("/files/upload/volume", recieveVolumeUpload)
+	l.Fatal(http.ListenAndServeTLS("0.0.0.0:4224", "/etc/pki/ca-trust/source/anchors/"+hostname+".crt", "/etc/pki/tls/private/"+hostname+".key", nil))
 }
 
 func setup() {
@@ -98,6 +118,58 @@ hostname fqdn.of.yourhost.tld
 }
 
 func main() {
+
+	wordPtr := flag.Bool("gencert", false, "Generate a CA (certificate authority) and client server certificates.")
+	flag.Parse()
+
+	if *wordPtr == true {
+		scanner := bufio.NewScanner(os.Stdin)
+		fmt.Print("CA Cert [true | false]: ")
+		scanner.Scan()
+		isCertificateAuthority := scanner.Text()
+		var isCa bool
+		if isCertificateAuthority == "true" {
+			isCa = true
+		} else if isCertificateAuthority == "false" {
+			isCa = false
+		}
+		fmt.Print("Certificate Path [ex. /root/master.crt]: ")
+		scanner.Scan()
+		certPath := scanner.Text()
+		fmt.Print("Key Path [ex. /root/master.key]: ")
+		scanner.Scan()
+		keyPath := scanner.Text()
+		fmt.Print("Organization [ex. Google.com]: ")
+		scanner.Scan()
+		certOrg := scanner.Text()
+		fmt.Print("Country Code [ex. USA]: ")
+		scanner.Scan()
+		countryCode := scanner.Text()
+		fmt.Print("Province/State [ex. California]: ")
+		scanner.Scan()
+		province := scanner.Text()
+		fmt.Print("Locality [ex. Los Angeles]: ")
+		scanner.Scan()
+		locality := scanner.Text()
+		fmt.Print("FQDN [ex. server.mydomain.com]: ")
+		scanner.Scan()
+		fullyQDN := scanner.Text()
+		fmt.Print("Organizational Unit [ex. Information Technology]: ")
+		scanner.Scan()
+		orgUnit := scanner.Text()
+		fmt.Print("Street Address [ex. 8234 Street NE]: ")
+		scanner.Scan()
+		streetAddress := scanner.Text()
+		fmt.Print("ZIP/Postal Code [ex. 90001]: ")
+		scanner.Scan()
+		zipCode := scanner.Text()
+		fmt.Print("IP Address [ex. 192.168.33.200]: ")
+		scanner.Scan()
+		ipAddress := scanner.Text()
+		genCert(certPath, keyPath, certOrg, countryCode, province, locality, zipCode, isCa, fullyQDN, orgUnit, streetAddress, ipAddress)
+		os.Exit(1)
+	}
+
 	setup()
 
 	// Check to see if config file exists
@@ -106,6 +178,28 @@ func main() {
 	} else {
 		l.Println("Config file '/etc/gammabyte/lsapi/config-lb.yml' not found!")
 		panic("Config file not found.")
+	}
+
+	// Get the SystemCertPool, continue with an empty pool on error
+	if rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+
+	// Get hostname
+	hostname, err := fqdn.FqdnHostname()
+	if err != nil {
+		l.Printf("Error getting hostname: %s\n", err.Error())
+		panic(err.Error())
+	}
+	// Read in the cert file
+	certs, err := ioutil.ReadFile("/etc/pki/ca-trust/source/anchors/" + hostname + ".crt")
+	if err != nil {
+		l.Fatalf("Failed to append %q to RootCAs: %v", "/etc/pki/ca-trust/source/anchors/"+hostname+".crt", err.Error())
+	}
+
+	// Append our cert to the system pool
+	if ok := rootCAs.AppendCertsFromPEM(certs); !ok {
+		l.Println("No certs appended, using system certs only")
 	}
 
 	// Parse the config file
@@ -169,7 +263,7 @@ func main() {
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
-	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, host_binding text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, host_binding text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text, disk_secret text)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -212,7 +306,7 @@ func main() {
 	if err != nil {
 		l.Printf("Error %s when getting rows affected\n", err)
 	}
-	l.Printf("Rpws affected when creating table hostinfo: %d\n", rows)
+	l.Printf("Rows affected when creating table hostinfo: %d\n", rows)
 
 	err = db.Ping()
 	if err != nil {
@@ -225,22 +319,16 @@ func main() {
 	hostnames, hostIPs, err := parseHostFile()
 	if err != nil {
 		l.Printf("Error: %s\n", err.Error())
-	}
-
-	var i = 0
-	hostnames, hostIPs, err = parseHostFile()
-	if err != nil {
-		l.Printf("Error: %s\n", err.Error())
 		return
 	}
 	l.Printf("Hosts: %s\n", hostnames)
 	l.Printf("Host IPs: %s\n", hostIPs)
-	for i = range hostnames {
+	for i := range hostnames {
 		l.Printf("%s\n", hostnames[i])
 	}
 	go startVncWebsocket()
-	handleRequests()
-
+	go handleFileServer(hostname)
+	handleRequests(hostname)
 }
 
 type configFile struct {
@@ -255,9 +343,13 @@ type configFile struct {
 	Subnet          string `yaml:"virtual_network_subnet"`
 	MasterKey       string `yaml:"master_key"`
 	MasterIP        string `yaml:"master_ip"`
+	MasterPort      string `yaml:"master_port"`
 	SyslogAddress   string `yaml:"syslog_server"`
 	AuthServer      string `yaml:"auth_server"`
 	LockNode        string `yaml:"lock_node"`
+	LegacyStorage   bool   `yaml:"legacy_storage"`
+	StorageServer   string `yaml:"storage_server"`
+	BackupLocation  string `yaml:"backup_dir"`
 }
 
 type requestProxyValue struct {
@@ -281,6 +373,118 @@ func fileExists(filename string) bool {
 		return false
 	}
 	return !info.IsDir()
+}
+
+func handleData(w http.ResponseWriter, r *http.Request) {
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+	}
+	defer file.Close()
+
+	// copy example
+	f, err := os.OpenFile(handler.Filename, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		panic(err) //please dont
+	}
+	defer f.Close()
+	io.Copy(f, file)
+}
+
+type imageHandler struct {
+	ImagePath  string `json:"ImagePath"`
+	ProxyType  string `json:"ProxyType"`
+	DomainName string `json:"DomainName"`
+}
+
+func GenerateSecureToken(length int) string {
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(b)
+}
+
+func handleImages(w http.ResponseWriter, r *http.Request) {
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		return
+	}
+	defer r.Body.Close()
+	decoder := json.NewDecoder(r.Body)
+	var handler = &imageHandler{}
+
+	err := decoder.Decode(&handler)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		return
+	}
+
+	var token string
+	var tusHash string
+
+	if handler.ProxyType == "genURI" {
+		err = db.QueryRow("SELECT token, tus_hash FROM images WHERE path = ?", handler.ImagePath).Scan(&token, &tusHash)
+		if err != nil {
+			l.Printf("Error: %s\n", err.Error())
+			return
+		}
+		fmt.Fprintf(w, "{\"URL\": \"https://gammabyte.xyz/volume?hash=%s&token=%s\"}", tusHash, token)
+		l.Printf("{\"URL\": \"https://gammabyte.xyz/volume?hash=%s&token=%s\"}", tusHash, token)
+		return
+	}
+}
+
+func serveImages(w http.ResponseWriter, r *http.Request) {
+	u, err := url.Parse(r.URL.String())
+	if err != nil {
+		l.Printf("Error parsing request URL: %s\n", err.Error())
+		return
+	}
+	queries := u.Query()
+	l.Println("Query strings: ")
+	for key, value := range queries {
+		l.Printf("  %v = %v\n", key, value)
+	}
+	token := queries.Get("token")
+	imagename := queries.Get("image")
+
+	var name string
+	var path string
+	err = db.QueryRow("SELECT name, path FROM images WHERE token = ?", token).Scan(&name, &path)
+	if err != nil {
+		l.Printf("Error: %s\n", err.Error())
+		return
+	}
+	if name != imagename {
+		fmt.Fprintf(w, "Unauthorized")
+		l.Printf("Unauthorized access to %s requested", name)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename="+name+".qcow2.gz")
+	http.ServeFile(w, r, path)
+
+	l.Println("User has accessed image. Timer to remove image has started and will be purged in two days.")
+	time.AfterFunc(48*time.Hour, func() {
+		err := os.Remove(path)
+		if err != nil {
+			l.Printf("Error removing image: %s\n", err.Error())
+			return
+		}
+		result, err := db.Exec("DELETE FROM images WHERE token = ?", token)
+		if err != nil {
+			l.Printf("Error removing old entry from images DB: %s\n", err.Error())
+			return
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			l.Printf("Error getting rows affected: %s\n", err.Error())
+			return
+		}
+		l.Printf("Rows affected when deleting image entry from MySQL: %d\n", rowsAffected)
+	})
+
 }
 
 func proxyRequestsAuth(w http.ResponseWriter, r *http.Request) {
@@ -336,7 +540,7 @@ func proxyRequestsAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	l.Printf("Request made to %s!", proxyURI)
 
-	httpUrl := fmt.Sprintf("http://%s/%s", ConfigFile.AuthServer, proxyURI)
+	httpUrl := fmt.Sprintf("https://%s/%s", ConfigFile.AuthServer, proxyURI)
 	returnValues, err := http.Post(httpUrl, "application/json", bytes.NewReader(bodyBytesFiltered))
 	if err != nil {
 		fmt.Fprintf(w, "Error: %s\n", err.Error())
@@ -435,8 +639,22 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 		l.Printf("Host IPs: %s\n", hostIPs)
 		for i = range hostnames {
 			l.Printf("Checking host %s\n...", hostnames[i])
-			hostURL := fmt.Sprintf("http://%s:4234/api/host/stats", hostnames[i])
-			resp, err := http.Get(hostURL)
+			hostURL := fmt.Sprintf("https://%s:4234/api/host/stats", hostnames[i])
+			req, err := http.NewRequest("GET", hostURL, nil)
+			if err != nil {
+				l.Printf("Error generating client stats request: %s\n", err.Error())
+				return
+			}
+			transport := &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs:   rootCAs,
+					ClientCAs: rootCAs,
+				},
+			}
+			client := &http.Client{
+				Transport: transport,
+			}
+			resp, err := client.Do(req)
 			if err != nil {
 				l.Printf("Error getting host stats: %s\n", err.Error())
 				return
@@ -484,11 +702,26 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		httpUrl := fmt.Sprintf("http://%s:%s/%s", hostChosen, dbvar.hostPort, proxyURI)
+		httpUrl := fmt.Sprintf("https://%s:%s/%s", hostChosen, dbvar.hostPort, proxyURI)
 		bodyBytesFilteredBuffered := bytes.NewBuffer(bodyBytesFiltered)
 		l.Printf(string(bodyBytesFiltered))
-		returnValues, err := http.Post(httpUrl, "application/json", bodyBytesFilteredBuffered)
+		req, err := http.NewRequest("POST", httpUrl, bodyBytesFilteredBuffered)
 		if err != nil {
+			l.Printf("Error: %s\n", err.Error())
+			return
+		}
+		transport := gzhttp.Transport(&http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs:   rootCAs,
+				ClientCAs: rootCAs,
+			},
+		})
+		client := &http.Client{
+			Transport: transport,
+		}
+		returnValues, err := client.Do(req)
+		if err != nil {
+			l.Printf("Error: %s\n", err.Error())
 			fmt.Fprintf(w, "Error: %s\n", err.Error())
 			returnValues.Body.Close()
 			r.Body.Close()
@@ -546,7 +779,7 @@ func proxyRequestsKvm(w http.ResponseWriter, r *http.Request) {
 	l.Printf("Host %s API has port binding %s!", dbvar.hostBinding, dbvar.hostPort)
 
 	// Setup the forward proxy
-	httpUrl := fmt.Sprintf("http://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
+	httpUrl := fmt.Sprintf("https://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
 	returnValues, err := http.Post(httpUrl, "application/json", bytes.NewBuffer(bodyBytesFiltered))
 	if err != nil {
 		r.Body.Close()
@@ -642,7 +875,7 @@ func proxyRequestsVnc(w http.ResponseWriter, r *http.Request) {
 	}
 	l.Printf("Host %s API has port binding %s!", dbvar.hostBinding, dbvar.hostPort)
 
-	httpUrl := fmt.Sprintf("http://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
+	httpUrl := fmt.Sprintf("https://%s:%s/%s", dbvar.hostBinding, dbvar.hostPort, proxyURI)
 	returnValues, err := http.Post(httpUrl, "application/json", bytes.NewReader(bodyBytesFiltered))
 	if err != nil {
 		fmt.Fprintf(w, "Error: %s\n", err.Error())
@@ -672,14 +905,14 @@ type hostConfig struct {
 func parseHostFile() ([]string, []string, error) {
 	conf := goconf.New()
 	if err := conf.Parse("/etc/gammabyte/lsapi/hosts.conf"); err != nil {
+		l.Println(err.Error())
 		return nil, nil, err
-		l.Println(err)
 	}
 
 	tf := &hostConfig{}
 	if err := conf.Unmarshal(tf); err != nil {
+		l.Println(err.Error())
 		return nil, nil, err
-		l.Println(err)
 	}
 
 	var hostnames []string
@@ -954,7 +1187,7 @@ func vncProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := fmt.Sprintf("http://%s:%s/api/vnc/proxy/create", dbvar.hostBinding, dbvar.hostPort)
+	url := fmt.Sprintf("https://%s:%s/api/vnc/proxy/create", dbvar.hostBinding, dbvar.hostPort)
 	sendBody := strings.NewReader(fmt.Sprintf(`{"UserToken": "%s", "Email": "%s", "DomainName": "%s"}`, t.UserToken, t.Email, t.VpsName))
 	if err != nil {
 		l.Printf("Error: %s\n", err.Error())
@@ -1010,11 +1243,19 @@ func startVncWebsocket() {
 		l.Printf("Error getting FQDN! Error: %s\n", err.Error())
 		panic(err)
 	}
-	l.Printf("Successfully started VNC proxy with URL: http://%s:8401/vnc.html", FQDN)
-	cmd, err := exec.Command("/srv/noVNC/utils/websockify/run", "0.0.0.0:8401", "--token-plugin=TokenFile", "--token-source=/etc/gammabyte/lsapi/vnc/vnc.conf", "--log-file=/var/log/lsapi-vnc.log", "--record=/var/log/lsapi-vnc.session", "--web=/srv/noVNC").Output()
+	l.Printf("Successfully started VNC proxy with URL: https://%s:8401/vnc.html", FQDN)
+	cmd := exec.Command("/srv/noVNC/utils/websockify/run", "0.0.0.0:8401", "--token-plugin=TokenFile", "--token-source=/etc/gammabyte/lsapi/vnc/vnc.conf", "--log-file=/var/log/lsapi-vnc.log", "--record=/var/log/lsapi-vnc.session", "--web=/srv/noVNC")
+	start := time.Now()
+	err = cmd.Run()
 	if err != nil {
 		l.Printf("Error starting VNC websocket: %s\n", err.Error())
 		panic(err)
 	}
-	l.Println(cmd)
+	fmt.Printf("pid=%d duration=%s err=%s\n", cmd.Process.Pid, time.Since(start), err)
+	time.AfterFunc(1*time.Second, func() {
+		err := cmd.Process.Kill()
+		if err != nil {
+			return
+		}
+	})
 }

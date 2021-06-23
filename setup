@@ -158,7 +158,7 @@ EOT
 
 setupKvmHost() {
   CURDIR=$(pwd)
-  dnf -y install libvirt virt-install libvirt-devel qemu-kvm curl wget
+  dnf -y install libvirt virt-install libvirt-devel qemu-kvm libvirt-daemon-driver-qemu curl wget ninja-build git
   cd kvm || exit
   go mod init libstatsapi
   go mod tidy

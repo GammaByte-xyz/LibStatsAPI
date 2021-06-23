@@ -1,6 +1,10 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -70,6 +74,9 @@ type configFile struct {
 	MasterIP        string `yaml:"master_ip"`
 	ListenPortHost  string `yaml:"host_listen_port"`
 	SyslogAddress   string `yaml:"syslog_server"`
+	MasterPort      string `yaml:"master_port"`
+	MetricsPollRate int    `yaml:"metrics_poll_rate"`
+	StoreMetrics    bool   `yaml:"store_metrics"`
 }
 
 func main() {
@@ -78,6 +85,29 @@ func main() {
 		l.Println("Config file found.")
 	} else {
 		l.Println("Config file '/etc/gammabyte/lsapi/config-kvm.yml' not found!")
+	}
+
+	// Get the SystemCertPool, continue with an empty pool on error
+	rootCAs, _ := x509.SystemCertPool()
+	if rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+
+	hostname, err := fqdn.FqdnHostname()
+	if err != nil {
+		l.Printf("Error getting hostname: %s\n", err.Error())
+		panic(err.Error())
+	}
+
+	// Read in the cert file
+	certs, err := ioutil.ReadFile("/etc/pki/tls/certs/" + hostname + ".crt")
+	if err != nil {
+		l.Fatalf("Failed to append %q to RootCAs: %v", "/etc/gammabyte/lsapi/lsapi-host.crt", err.Error())
+	}
+
+	// Append our cert to the system pool
+	if ok := rootCAs.AppendCertsFromPEM(certs); !ok {
+		l.Println("No certs appended, using system certs only")
 	}
 
 	// Parse the config file
@@ -131,7 +161,7 @@ func main() {
 	}
 	l.Printf("Rows affected when creating table: %d\n", rows)
 
-	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, host_binding text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text)`
+	query = `CREATE TABLE IF NOT EXISTS domaininfo(domain_name text, network text, host_binding text, mac_address text, ram int, vcpus int, storage int, ip_address text, disk_path text, time_created text, user_email text, user_full_name text, username text, user_token text, disk_secret text)`
 
 	ctx, cancelfunc = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelfunc()
@@ -211,14 +241,97 @@ func main() {
 		l.Printf("Error inserting host info: %s\n", err.Error())
 		panic(err)
 	}
-	handleRequests()
+
+	go gatherMetrics(&ConfigFile)
+	handleRequests(&ConfigFile, rootCAs, hostname)
+
 }
 
-func handleRequests() {
-	http.HandleFunc("/api/host/stats", getStats)
+func sendCert(w http.ResponseWriter, r *http.Request) {
+	crtBytes, err := ioutil.ReadFile("/etc/gammabyte/lsapi/lsapi-host.crt")
+	if err != nil {
+		l.Printf("Error reading file: %s\n", err.Error())
+		return
+	}
+	_, err = fmt.Fprint(w, string(crtBytes))
+	if err != nil {
+		l.Printf("Error sending client response: %s\n", err.Error())
+		return
+	}
+}
 
+func getMasterCert(ConfigFile *configFile) ([]byte, error) {
+	var t int
+	if len(ConfigFile.MasterKey) >= 32 {
+		t = 32
+	} else if len(ConfigFile.MasterKey) <= 32 && len(ConfigFile.MasterKey) >= 24 {
+		t = 24
+	} else if len(ConfigFile.MasterKey) <= 24 && len(ConfigFile.MasterKey) >= 16 {
+		t = 16
+	}
+
+	key := []byte(ConfigFile.MasterKey[:t])
+	plainText := []byte("K{eR8]:pP:$z}xSogwQ(tzjK#=io_6M:yT;fFdNrbL%Ce*}K[XO>;r[G")
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		l.Printf("Error creating new cipher block: %s\n", err.Error())
+		return nil, err
+	}
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		l.Printf("Error creating new aesGCM cipher: %s\n", err.Error())
+		return nil, err
+	}
+	nonce := make([]byte, aesGCM.NonceSize())
+	ciphertext := aesGCM.Seal(nonce, nonce, plainText, nil)
+
+	r := strings.NewReader(string(ciphertext))
+	req, err := http.NewRequest("POST", "https://"+ConfigFile.MasterIP+":"+ConfigFile.MasterPort+"/api/tls/getcert", r)
+	if err != nil {
+		l.Printf("Error generating certificate request: %s\n", err.Error())
+		return nil, err
+	}
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: transport}
+	hostname, err := fqdn.FqdnHostname()
+	if err != nil {
+		l.Printf("Error getting hostname: %s\n", err.Error())
+		return nil, err
+	}
+	req.Header.Set("hostname", hostname)
+	req.Header.Set("listenport", "4234")
+	resp, err := client.Do(req)
+	if err != nil {
+		l.Printf("Error sending request: %s\n", err.Error())
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		l.Printf("Error: Master node rejected the request due to an invalid authphrase")
+		return nil, fmt.Errorf("master node rejected the request due to an invalid authphrase")
+	}
+	if resp.StatusCode != http.StatusOK {
+		l.Printf("Error: Master node did not respond with HTTP 200, they responded with %s\n", resp.Status)
+		return nil, fmt.Errorf("master node did not respond with HTTP 200, they responded with %s\n", resp.Status)
+	}
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		l.Printf("Error reading response body: %s\n", err.Error())
+		return nil, err
+	}
+	return respBytes, nil
+}
+
+func handleRequests(ConfigFile *configFile, rootCAs *x509.CertPool, hostname string) {
+	http.HandleFunc("/api/host/stats", getStats)
+	http.HandleFunc("/api/getcert", sendCert)
+	http.HandleFunc("/api/metrics/average", averageEndpoint)
+	http.HandleFunc("/api/metrics/by/timestamp", timestampMetricsEndpoint)
 	// Listen on specified port
-	l.Fatal(http.ListenAndServe("0.0.0.0:4234", nil))
+	l.Fatal(http.ListenAndServeTLS(":4234", "/etc/pki/tls/certs/"+hostname+".crt", "/etc/pki/tls/private/"+hostname+".key", nil))
 }
 
 func getStats(w http.ResponseWriter, r *http.Request) {
